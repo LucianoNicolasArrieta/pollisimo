@@ -4,12 +4,24 @@ import { DashboardStats } from '@/lib/types';
 
 export async function GET() {
   try {
-    // 1. Total ventas entregadas (Efectivo + Transferencia)
+    // 1. Total ventas entregadas con desglose Mixto
     const ventasRows = await query<any[]>(
       `SELECT 
          COALESCE(SUM(total_final), 0) AS total_entregados,
-         COALESCE(SUM(CASE WHEN medio_pago = 'Efectivo' THEN total_final ELSE 0 END), 0) AS efectivo,
-         COALESCE(SUM(CASE WHEN medio_pago = 'Transferencia' THEN total_final ELSE 0 END), 0) AS transferencia
+         COALESCE(SUM(
+           CASE 
+             WHEN medio_pago = 'Efectivo' THEN total_final 
+             WHEN medio_pago = 'Mixto' THEN COALESCE(monto_efectivo, 0)
+             ELSE 0 
+           END
+         ), 0) AS efectivo,
+         COALESCE(SUM(
+           CASE 
+             WHEN medio_pago = 'Transferencia' THEN total_final 
+             WHEN medio_pago = 'Mixto' THEN COALESCE(monto_transferencia, 0)
+             ELSE 0 
+           END
+         ), 0) AS transferencia
        FROM ventas
        WHERE estado = 'Entregado'`
     );
@@ -26,7 +38,7 @@ export async function GET() {
 
     // 4. Insumos con bajo stock
     const stockBajoRows = await query<any[]>(
-      `SELECT COUNT(*) AS insumos_bajos FROM v_stock_insumos WHERE bajo_stock = 1`
+      `SELECT COUNT(*) AS insumos_bajos FROM v_stock_insumos WHERE bajo_stock = true`
     );
 
     // 5. Disponibilidad total de bandejas y kilos
@@ -58,6 +70,7 @@ export async function GET() {
 
     return NextResponse.json(stats);
   } catch (error: any) {
+    console.error('Error in GET /api/dashboard:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

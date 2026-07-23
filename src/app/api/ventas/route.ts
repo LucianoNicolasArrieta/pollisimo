@@ -7,7 +7,8 @@ export async function GET() {
   try {
     const rows = await query<any[]>(
       `SELECT v.id, v.fecha, v.cliente, v.producto_id, p.nombre AS producto_nombre,
-              v.peso_kg, v.precio_por_kg, v.precio_calculado, v.total_final, v.medio_pago, v.estado, v.notas, v.created_at
+              v.peso_kg, v.precio_por_kg, v.precio_calculado, v.total_final, v.medio_pago,
+              v.monto_efectivo, v.monto_transferencia, v.estado, v.notas, v.created_at
        FROM ventas v
        JOIN productos p ON p.id = v.producto_id
        ORDER BY v.fecha DESC, v.created_at DESC`
@@ -19,6 +20,8 @@ export async function GET() {
       precio_por_kg: Number(v.precio_por_kg) || 0,
       precio_calculado: Number(v.precio_calculado) || 0,
       total_final: Number(v.total_final) || 0,
+      monto_efectivo: Number(v.monto_efectivo) || 0,
+      monto_transferencia: Number(v.monto_transferencia) || 0,
     }));
 
     return NextResponse.json(ventasFormatted);
@@ -37,6 +40,8 @@ export async function POST(req: Request) {
       peso_kg = null,
       precio_por_kg,
       medio_pago = 'Efectivo',
+      monto_efectivo = 0,
+      monto_transferencia = 0,
       estado = 'Pendiente',
       notas = '',
     } = body;
@@ -45,7 +50,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Cliente y producto son requeridos' }, { status: 400 });
     }
 
-    // Si no enviaron precio_por_kg, obtenerlo del producto
     let precioKg = precio_por_kg;
     if (!precioKg) {
       const prodRows = await query<any[]>('SELECT precio_venta_por_kg FROM productos WHERE id = ?', [producto_id]);
@@ -58,13 +62,14 @@ export async function POST(req: Request) {
 
     const id = randomUUID();
     const parsedPeso = peso_kg !== null && peso_kg !== '' && !isNaN(Number(peso_kg)) ? Number(peso_kg) : null;
+    const parsedEfectivo = Number(monto_efectivo) || 0;
+    const parsedTransferencia = Number(monto_transferencia) || 0;
 
     await query(
-      'INSERT INTO ventas (id, fecha, cliente, producto_id, peso_kg, precio_por_kg, medio_pago, estado, notas) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [id, fecha, cliente, producto_id, parsedPeso, precioKg, medio_pago, estado, notas]
+      'INSERT INTO ventas (id, fecha, cliente, producto_id, peso_kg, precio_por_kg, medio_pago, monto_efectivo, monto_transferencia, estado, notas) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, fecha, cliente, producto_id, parsedPeso, precioKg, medio_pago, parsedEfectivo, parsedTransferencia, estado, notas]
     );
 
-    // Obtener la venta recién insertada con los valores calculados por el trigger
     const createdRows = await query<any[]>('SELECT * FROM ventas WHERE id = ?', [id]);
 
     return NextResponse.json({ success: true, venta: createdRows[0] });
@@ -76,19 +81,21 @@ export async function POST(req: Request) {
 export async function PUT(req: Request) {
   try {
     const body = await req.json();
-    const { id, fecha, cliente, producto_id, peso_kg, precio_por_kg, medio_pago, estado, notas } = body;
+    const { id, fecha, cliente, producto_id, peso_kg, precio_por_kg, medio_pago, monto_efectivo = 0, monto_transferencia = 0, estado, notas } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'ID es requerido' }, { status: 400 });
     }
 
     const parsedPeso = peso_kg !== null && peso_kg !== '' && !isNaN(Number(peso_kg)) ? Number(peso_kg) : null;
+    const parsedEfectivo = Number(monto_efectivo) || 0;
+    const parsedTransferencia = Number(monto_transferencia) || 0;
 
     await query(
       `UPDATE ventas
-       SET fecha = ?, cliente = ?, producto_id = ?, peso_kg = ?, precio_por_kg = ?, medio_pago = ?, estado = ?, notas = ?
+       SET fecha = ?, cliente = ?, producto_id = ?, peso_kg = ?, precio_por_kg = ?, medio_pago = ?, monto_efectivo = ?, monto_transferencia = ?, estado = ?, notas = ?
        WHERE id = ?`,
-      [fecha, cliente, producto_id, parsedPeso, precio_por_kg, medio_pago, estado, notas, id]
+      [fecha, cliente, producto_id, parsedPeso, precio_por_kg, medio_pago, parsedEfectivo, parsedTransferencia, estado, notas, id]
     );
 
     const updatedRows = await query<any[]>('SELECT * FROM ventas WHERE id = ?', [id]);

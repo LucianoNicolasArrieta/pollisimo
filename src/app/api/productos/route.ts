@@ -5,10 +5,10 @@ import { randomUUID } from 'crypto';
 
 export async function GET() {
   try {
-    const rows = await query<Producto[]>(
-      'SELECT id, nombre, unidad, precio_venta_por_kg, costo_estimado_por_kg, created_at FROM productos ORDER BY nombre ASC'
+    const rows = await query<any[]>(
+      'SELECT id, nombre, unidad, precio_venta_por_kg, costo_estimado_por_kg, stock_inicial_kilos, stock_inicial_bandejas, created_at FROM productos ORDER BY nombre ASC'
     );
-    const productosWithMargen = rows.map((p) => {
+    const productosWithMargen: Producto[] = rows.map((p) => {
       const precio = Number(p.precio_venta_por_kg) || 0;
       const costo = Number(p.costo_estimado_por_kg) || 0;
       const margen = precio > 0 ? ((precio - costo) / precio) * 100 : 0;
@@ -16,6 +16,8 @@ export async function GET() {
         ...p,
         precio_venta_por_kg: precio,
         costo_estimado_por_kg: costo,
+        stock_inicial_kilos: Number(p.stock_inicial_kilos) || 0,
+        stock_inicial_bandejas: Number(p.stock_inicial_bandejas) || 0,
         margen_porcentaje: Math.round(margen * 10) / 10,
       };
     });
@@ -28,14 +30,14 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { nombre, unidad = 'kg', precio_venta_por_kg, costo_estimado_por_kg = 0 } = body;
+    const { nombre, unidad = 'kg', precio_venta_por_kg, costo_estimado_por_kg = 0, stock_inicial_kilos = 0, stock_inicial_bandejas = 0 } = body;
     if (!nombre || !precio_venta_por_kg) {
       return NextResponse.json({ error: 'Nombre y precio por kg son requeridos' }, { status: 400 });
     }
     const id = randomUUID();
     await query(
-      'INSERT INTO productos (id, nombre, unidad, precio_venta_por_kg, costo_estimado_por_kg) VALUES (?, ?, ?, ?, ?)',
-      [id, nombre, unidad, precio_venta_por_kg, costo_estimado_por_kg]
+      'INSERT INTO productos (id, nombre, unidad, precio_venta_por_kg, costo_estimado_por_kg, stock_inicial_kilos, stock_inicial_bandejas) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [id, nombre, unidad, precio_venta_por_kg, costo_estimado_por_kg, stock_inicial_kilos, stock_inicial_bandejas]
     );
     return NextResponse.json({ success: true, id });
   } catch (error: any) {
@@ -46,13 +48,13 @@ export async function POST(req: Request) {
 export async function PUT(req: Request) {
   try {
     const body = await req.json();
-    const { id, nombre, unidad, precio_venta_por_kg, costo_estimado_por_kg } = body;
+    const { id, nombre, unidad, precio_venta_por_kg, costo_estimado_por_kg, stock_inicial_kilos = 0, stock_inicial_bandejas = 0 } = body;
     if (!id) {
       return NextResponse.json({ error: 'ID es requerido' }, { status: 400 });
     }
     await query(
-      'UPDATE productos SET nombre = ?, unidad = ?, precio_venta_por_kg = ?, costo_estimado_por_kg = ? WHERE id = ?',
-      [nombre, unidad, precio_venta_por_kg, costo_estimado_por_kg, id]
+      'UPDATE productos SET nombre = ?, unidad = ?, precio_venta_por_kg = ?, costo_estimado_por_kg = ?, stock_inicial_kilos = ?, stock_inicial_bandejas = ? WHERE id = ?',
+      [nombre, unidad, precio_venta_por_kg, costo_estimado_por_kg, stock_inicial_kilos, stock_inicial_bandejas, id]
     );
     return NextResponse.json({ success: true });
   } catch (error: any) {

@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { Producto } from '@/lib/types';
 import { formatCurrency } from '@/lib/utils';
 import { Modal } from '@/components/Modal';
-import { Beef, Plus, Edit2, Trash2, Percent, DollarSign } from 'lucide-react';
+import { Beef, Plus, Edit2, Trash2, Percent, Boxes } from 'lucide-react';
 
 export default function ProductosPage() {
   const [productos, setProductos] = useState<Producto[]>([]);
@@ -17,6 +17,8 @@ export default function ProductosPage() {
   const [unidad, setUnidad] = useState('kg');
   const [precioVenta, setPrecioVenta] = useState('');
   const [costoEstimado, setCostoEstimado] = useState('');
+  const [stockInicialKilos, setStockInicialKilos] = useState('');
+  const [stockInicialBandejas, setStockInicialBandejas] = useState('');
   const [saving, setSaving] = useState(false);
 
   const fetchProductos = async () => {
@@ -44,6 +46,8 @@ export default function ProductosPage() {
     setUnidad('kg');
     setPrecioVenta('');
     setCostoEstimado('');
+    setStockInicialKilos('');
+    setStockInicialBandejas('');
     setIsModalOpen(true);
   };
 
@@ -53,6 +57,8 @@ export default function ProductosPage() {
     setUnidad(p.unidad || 'kg');
     setPrecioVenta(p.precio_venta_por_kg.toString());
     setCostoEstimado(p.costo_estimado_por_kg.toString());
+    setStockInicialKilos(p.stock_inicial_kilos !== undefined ? p.stock_inicial_kilos.toString() : '');
+    setStockInicialBandejas(p.stock_inicial_bandejas !== undefined ? p.stock_inicial_bandejas.toString() : '');
     setIsModalOpen(true);
   };
 
@@ -67,6 +73,8 @@ export default function ProductosPage() {
         unidad,
         precio_venta_por_kg: Number(precioVenta),
         costo_estimado_por_kg: Number(costoEstimado) || 0,
+        stock_inicial_kilos: Number(stockInicialKilos) || 0,
+        stock_inicial_bandejas: Number(stockInicialBandejas) || 0,
       };
 
       const method = editingId ? 'PUT' : 'POST';
@@ -111,10 +119,10 @@ export default function ProductosPage() {
         <div>
           <h1 className="text-xl sm:text-2xl font-extrabold text-[#881313] flex items-center gap-2">
             <Beef className="w-6 h-6 text-[#aa1919]" />
-            Catálogo de Productos
+            Catálogo de Productos y Stock Inicial
           </h1>
           <p className="text-xs sm:text-sm text-gray-600 mt-0.5">
-            Configura tus productos vendidos por kilo y controla sus márgenes de ganancia.
+            Configura precios, costos y el <b>Stock Inicial de Milanesas</b> (kilos y bandejas actuales).
           </p>
         </div>
         <button
@@ -147,7 +155,7 @@ export default function ProductosPage() {
                     {prod.unidad}
                   </span>
                 </div>
-                <div className="mt-4 space-y-1.5 text-sm">
+                <div className="mt-4 space-y-2 text-sm">
                   <div className="flex items-center justify-between text-gray-600">
                     <span>Precio Venta / kg:</span>
                     <span className="font-extrabold text-base text-emerald-700">
@@ -160,10 +168,23 @@ export default function ProductosPage() {
                       {formatCurrency(prod.costo_estimado_por_kg)}
                     </span>
                   </div>
+
+                  {/* Stock Inicial Banner */}
+                  <div className="bg-amber-50/80 border border-amber-200/80 p-2.5 rounded-xl space-y-1 text-xs">
+                    <div className="flex items-center gap-1.5 font-bold text-amber-900">
+                      <Boxes className="w-3.5 h-3.5 text-amber-700" />
+                      Stock Inicial Base:
+                    </div>
+                    <div className="flex justify-between text-gray-700 font-semibold pl-5">
+                      <span>Kilos Iniciales: <b>{prod.stock_inicial_kilos || 0} kg</b></span>
+                      <span>Bandejas Iniciales: <b>{prod.stock_inicial_bandejas || 0} u</b></span>
+                    </div>
+                  </div>
+
                   <div className="flex items-center justify-between pt-2 border-t border-gray-100">
                     <span className="font-semibold text-xs text-gray-500">Margen Estimado:</span>
-                    <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-900 border border-amber-200 text-xs font-extrabold px-2.5 py-1 rounded-lg">
-                      <Percent className="w-3 h-3 text-amber-600" />
+                    <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-900 border border-emerald-200 text-xs font-extrabold px-2.5 py-1 rounded-lg">
+                      <Percent className="w-3 h-3 text-emerald-600" />
                       {prod.margen_porcentaje}%
                     </span>
                   </div>
@@ -196,7 +217,7 @@ export default function ProductosPage() {
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title={editingId ? 'Editar Producto' : 'Nuevo Producto'}
+        title={editingId ? 'Editar Producto y Stock Inicial' : 'Nuevo Producto'}
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -211,16 +232,6 @@ export default function ProductosPage() {
             />
           </div>
 
-          <div>
-            <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Unidad de Medida</label>
-            <input
-              type="text"
-              disabled
-              value="kg"
-              className="w-full px-3.5 py-2 bg-gray-100 border border-gray-200 rounded-xl text-sm font-semibold text-gray-500"
-            />
-          </div>
-
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Precio Venta / kg ($) *</label>
@@ -228,7 +239,7 @@ export default function ProductosPage() {
                 type="number"
                 step="0.01"
                 required
-                placeholder="ej. 8500"
+                placeholder="ej. 9500"
                 value={precioVenta}
                 onChange={(e) => setPrecioVenta(e.target.value)}
                 className="w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-xl text-sm focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
@@ -239,7 +250,7 @@ export default function ProductosPage() {
               <input
                 type="number"
                 step="0.01"
-                placeholder="ej. 4800"
+                placeholder="ej. 6041"
                 value={costoEstimado}
                 onChange={(e) => setCostoEstimado(e.target.value)}
                 className="w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-xl text-sm focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
@@ -247,10 +258,47 @@ export default function ProductosPage() {
             </div>
           </div>
 
+          {/* Initial Stock Section */}
+          <div className="bg-[#fbf5ea] border border-[#eee0cb] p-3.5 rounded-xl space-y-3">
+            <p className="text-xs font-extrabold text-[#aa1919] uppercase flex items-center gap-1.5">
+              <Boxes className="w-4 h-4" />
+              Cargar Stock Físico Inicial de Milanesas:
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Kilos Iniciales Actuales</label>
+                <input
+                  type="number"
+                  step="0.001"
+                  inputMode="decimal"
+                  placeholder="ej. 15.500"
+                  value={stockInicialKilos}
+                  onChange={(e) => setStockInicialKilos(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-xl text-sm font-bold focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Bandejas Iniciales Actuales</label>
+                <input
+                  type="number"
+                  step="1"
+                  inputMode="numeric"
+                  placeholder="ej. 12"
+                  value={stockInicialBandejas}
+                  onChange={(e) => setStockInicialBandejas(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-xl text-sm font-bold focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
+                />
+              </div>
+            </div>
+            <p className="text-[10px] text-gray-500">
+              * El stock inicial se suma a tus producciones futuras y resta las ventas registradas.
+            </p>
+          </div>
+
           {/* Margen Calculado Preview */}
-          <div className="bg-[#fbf5ea] border border-[#eee0cb] p-3 rounded-xl flex items-center justify-between text-xs">
-            <span className="font-semibold text-[#5c4033]">Margen calculado automático:</span>
-            <span className="font-bold text-sm text-[#aa1919]">{calculatedMargen()}%</span>
+          <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-xl flex items-center justify-between text-xs">
+            <span className="font-semibold text-emerald-900">Margen de Ganancia Calculado:</span>
+            <span className="font-extrabold text-sm text-emerald-800">{calculatedMargen()}%</span>
           </div>
 
           <div className="flex items-center justify-end gap-2 pt-3">
@@ -266,7 +314,7 @@ export default function ProductosPage() {
               disabled={saving}
               className="px-5 py-2.5 bg-[#aa1919] hover:bg-[#881313] text-white text-xs font-bold rounded-xl shadow-md transition-all active:scale-95 disabled:opacity-50"
             >
-              {saving ? 'Guardando...' : editingId ? 'Actualizar' : 'Crear Producto'}
+              {saving ? 'Guardando...' : editingId ? 'Actualizar Producto' : 'Crear Producto'}
             </button>
           </div>
         </form>

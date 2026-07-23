@@ -4,8 +4,9 @@ export interface Producto {
   unidad: string;
   precio_venta_por_kg: number;
   costo_estimado_por_kg: number;
+  stock_inicial_kilos?: number;
+  stock_inicial_bandejas?: number;
   created_at?: string;
-  // Calculado en frontend / query
   margen_porcentaje?: number;
 }
 
@@ -72,7 +73,7 @@ export interface ResumenProduccion {
   bandejas_disponibles: number;
 }
 
-export type MedioPago = 'Efectivo' | 'Transferencia';
+export type MedioPago = 'Efectivo' | 'Transferencia' | 'Mixto';
 export type EstadoVenta = 'Reservado' | 'Pendiente' | 'Entregado' | 'Cancelado';
 
 export interface Venta {
@@ -86,6 +87,8 @@ export interface Venta {
   precio_calculado: number;
   total_final: number;
   medio_pago: MedioPago;
+  monto_efectivo?: number;
+  monto_transferencia?: number;
   estado: EstadoVenta;
   notas?: string;
   created_at?: string;
