@@ -28,6 +28,8 @@ export default function ProduccionPage() {
   const [bandejasObtenidas, setBandejasObtenidas] = useState('');
   const [kilosTotales, setKilosTotales] = useState('');
   const [afectaStock, setAfectaStock] = useState(true);
+  const [targetMargin, setTargetMargin] = useState('35');
+  const [applySuggestedPrice, setApplySuggestedPrice] = useState(false);
   const [notas, setNotas] = useState('');
 
   // Map of insumo_id -> cantidad_usada
@@ -151,6 +153,10 @@ export default function ProduccionPage() {
           cantidad_usada: Number(qtyStr),
         }));
 
+      const costoPorKg = Number(kilosTotales) > 0 ? totalCostoPreview / Number(kilosTotales) : 0;
+      const marginPct = Number(targetMargin) || 35;
+      const suggestedPriceKg = costoPorKg > 0 ? Math.round((costoPorKg / (1 - marginPct / 100)) / 50) * 50 : 0;
+
       const payload = {
         fecha,
         producto_id: productoId,
@@ -159,6 +165,8 @@ export default function ProduccionPage() {
         afecta_stock: afectaStock,
         notas,
         insumos_usados: insumosArray,
+        nuevo_precio_venta_sugerido: applySuggestedPrice ? suggestedPriceKg : null,
+        costo_estimado_por_kg: costoPorKg > 0 ? Math.round(costoPorKg * 100) / 100 : null,
       };
 
       const res = await fetch('/api/producciones', {
@@ -419,24 +427,76 @@ export default function ProduccionPage() {
             </div>
           </div>
 
-          {/* Cost Preview Calculations */}
-          <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl space-y-1 text-xs text-amber-950">
-            <div className="flex justify-between">
+          {/* Cost & Price Suggestion Calculations */}
+          <div className="bg-amber-50 border border-amber-200 p-3.5 rounded-xl space-y-2 text-xs text-amber-950">
+            <div className="flex justify-between items-center">
               <span>Costo Estimado de Insumos:</span>
-              <span className="font-extrabold">{formatCurrency(totalCostoPreview)}</span>
+              <span className="font-extrabold text-sm text-[#aa1919]">{formatCurrency(totalCostoPreview)}</span>
             </div>
-            <div className="flex justify-between">
+            <div className="flex justify-between text-gray-700">
               <span>Costo Estimado por kg:</span>
               <span className="font-bold">
                 {kilosNum > 0 ? formatCurrency(totalCostoPreview / kilosNum) : '$ 0'} / kg
               </span>
             </div>
-            <div className="flex justify-between">
+            <div className="flex justify-between text-gray-700">
               <span>Costo Estimado por Bandeja:</span>
               <span className="font-bold">
                 {bandejasNum > 0 ? formatCurrency(totalCostoPreview / bandejasNum) : '$ 0'} / bandeja
               </span>
             </div>
+
+            {/* Price Suggestion Box */}
+            {kilosNum > 0 && totalCostoPreview > 0 && (
+              <div className="mt-2 pt-2.5 border-t border-amber-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-extrabold text-amber-900 flex items-center gap-1">
+                    💡 Precio Venta Sugerido / kg:
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] font-semibold text-gray-600">Margen:</span>
+                    <select
+                      value={targetMargin}
+                      onChange={(e) => setTargetMargin(e.target.value)}
+                      className="px-2 py-1 bg-white border border-amber-300 rounded-lg font-bold text-xs text-amber-900 focus:outline-hidden"
+                    >
+                      <option value="30">30%</option>
+                      <option value="35">35%</option>
+                      <option value="40">40%</option>
+                      <option value="45">45%</option>
+                      <option value="50">50%</option>
+                    </select>
+                  </div>
+                </div>
+
+                {(() => {
+                  const cKg = totalCostoPreview / kilosNum;
+                  const mPct = Number(targetMargin) || 35;
+                  const sugPrice = Math.round((cKg / (1 - mPct / 100)) / 50) * 50;
+                  return (
+                    <div className="bg-white p-2.5 rounded-lg border border-amber-300 flex items-center justify-between">
+                      <div>
+                        <span className="block text-base font-black text-emerald-700">
+                          {formatCurrency(sugPrice)} / kg
+                        </span>
+                        <span className="text-[10px] text-gray-500">
+                          (Costo ${cKg.toFixed(0)} + Margen {mPct}%)
+                        </span>
+                      </div>
+                      <label className="flex items-center gap-1.5 text-xs font-bold text-gray-800 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={applySuggestedPrice}
+                          onChange={(e) => setApplySuggestedPrice(e.target.checked)}
+                          className="w-4 h-4 accent-[#aa1919] rounded-md cursor-pointer"
+                        />
+                        Actualizar en catálogo
+                      </label>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
           </div>
 
           {/* Toggle Afecta Stock */}

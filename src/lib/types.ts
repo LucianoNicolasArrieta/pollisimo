@@ -78,10 +78,35 @@ export interface ResumenProduccion {
 export type MedioPago = 'Efectivo' | 'Transferencia' | 'Mixto';
 export type EstadoVenta = 'Reservado' | 'Pendiente' | 'Entregado' | 'Cancelado';
 
+export interface Cliente {
+  id: string;
+  nombre: string;
+  direccion?: string;
+  telefono?: string;
+  created_at?: string;
+}
+
+export interface ClienteConStats extends Cliente {
+  total_ventas: number;
+  total_gastado: number;
+  total_kilos: number;
+  total_bandejas: number;
+  ultima_compra?: string | null;
+  ticket_promedio: number;
+}
+
+export interface StatsClientesGlobales {
+  total_clientes: number;
+  ticket_promedio_global: number;
+  total_recaudado: number;
+  cliente_vip: string;
+}
+
 export interface Venta {
   id: string;
   fecha: string;
   cliente: string;
+  cliente_id?: string;
   producto_id: string;
   producto_nombre?: string;
   peso_kg: number | null;

@@ -45,33 +45,51 @@ export default function DashboardPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
       {/* Header Banner */}
-      <div className="bg-gradient-to-r from-[#aa1919] to-[#881313] rounded-3xl p-6 sm:p-8 text-white shadow-xl relative overflow-hidden">
+      <div className="bg-gradient-to-r from-[#aa1919] to-[#881313] rounded-3xl p-5 sm:p-7 text-white shadow-xl relative overflow-hidden space-y-4">
         <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
               ¡Hola! Bienvenidos a Pollisimo 👋
             </h1>
-            <p className="text-red-100 mt-1 text-sm sm:text-base italic font-serif">
+            <p className="text-red-100 mt-1 text-xs sm:text-sm italic font-serif">
               "Abrís el freezer y sonreís"
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={fetchStats}
-              disabled={loading}
-              className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white px-3.5 py-2 rounded-xl text-xs font-semibold backdrop-blur-xs transition-all active:scale-95"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-              Actualizar
-            </button>
-            <Link
-              href="/ventas"
-              className="flex items-center gap-2 bg-amber-400 hover:bg-amber-300 text-red-950 px-4 py-2.5 rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition-all active:scale-95"
-            >
-              <PlusCircle className="w-4 h-4" />
-              Nueva Venta
-            </Link>
-          </div>
+          <button
+            onClick={fetchStats}
+            disabled={loading}
+            className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white px-3.5 py-2 rounded-xl text-xs font-semibold backdrop-blur-xs transition-all active:scale-95 w-fit"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            Actualizar
+          </button>
+        </div>
+
+        {/* 3 Main Action Buttons (Mobile & Desktop) */}
+        <div className="relative z-10 grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+          <Link
+            href="/ventas?action=quick"
+            className="flex items-center justify-center gap-2 bg-amber-400 hover:bg-amber-300 text-red-950 px-4 py-3 rounded-2xl text-sm font-extrabold shadow-md hover:shadow-lg transition-all active:scale-95"
+          >
+            <ShoppingBag className="w-5 h-5" />
+            🛒 Cargar Venta
+          </Link>
+
+          <Link
+            href="/produccion"
+            className="flex items-center justify-center gap-2 bg-white/15 hover:bg-white/25 text-white border border-white/20 px-4 py-3 rounded-2xl text-sm font-extrabold backdrop-blur-xs transition-all active:scale-95"
+          >
+            <Factory className="w-5 h-5" />
+            🍗 Cargar Producción
+          </Link>
+
+          <Link
+            href="/compras"
+            className="flex items-center justify-center gap-2 bg-white/15 hover:bg-white/25 text-white border border-white/20 px-4 py-3 rounded-2xl text-sm font-extrabold backdrop-blur-xs transition-all active:scale-95"
+          >
+            <Receipt className="w-5 h-5" />
+            🧾 Cargar Compra
+          </Link>
         </div>
       </div>
 

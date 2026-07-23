@@ -67,6 +67,8 @@ export async function POST(req: Request) {
       afecta_stock = true,
       notas = '',
       insumos_usados = [], // Array de { insumo_id, cantidad_usada }
+      nuevo_precio_venta_sugerido = null,
+      costo_estimado_por_kg = null,
     } = body;
 
     if (!producto_id || !bandejas_obtenidas || !kilos_totales) {
@@ -92,6 +94,22 @@ export async function POST(req: Request) {
           'INSERT INTO produccion_insumos (id, produccion_id, insumo_id, cantidad_usada, costo_unitario_historico) VALUES (?, ?, ?, ?, ?)',
           [randomUUID(), produccion_id, item.insumo_id, item.cantidad_usada, costoUnitario]
         );
+      }
+    }
+
+    // Opcionalmente actualizar el precio de venta y costo estimado del producto si el usuario aceptó la sugerencia
+    if (nuevo_precio_venta_sugerido && Number(nuevo_precio_venta_sugerido) > 0) {
+      if (costo_estimado_por_kg !== null && Number(costo_estimado_por_kg) > 0) {
+        await query('UPDATE productos SET precio_venta_por_kg = ?, costo_estimado_por_kg = ? WHERE id = ?', [
+          Number(nuevo_precio_venta_sugerido),
+          Number(costo_estimado_por_kg),
+          producto_id,
+        ]);
+      } else {
+        await query('UPDATE productos SET precio_venta_por_kg = ? WHERE id = ?', [
+          Number(nuevo_precio_venta_sugerido),
+          producto_id,
+        ]);
       }
     }
 

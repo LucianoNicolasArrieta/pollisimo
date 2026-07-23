@@ -11,6 +11,7 @@ import {
   Receipt,
   Boxes,
   Beef,
+  Users,
   PlusCircle,
 } from 'lucide-react';
 
@@ -20,10 +21,11 @@ export function Navbar() {
   const navItems = [
     { href: '/dashboard', label: 'Resumen', icon: LayoutDashboard },
     { href: '/ventas', label: 'Ventas', icon: ShoppingBag },
+    { href: '/clientes', label: 'Clientes', icon: Users },
     { href: '/produccion', label: 'Producción', icon: Factory },
     { href: '/compras', label: 'Compras', icon: Receipt },
-    { href: '/stock', label: 'Stock Insumos', icon: Boxes },
-    { href: '/productos', label: 'Productos', icon: Beef },
+    { href: '/stock', label: 'Stock', icon: Boxes },
+    { href: '/productos', label: 'Catálogo', icon: Beef },
   ];
 
   return (

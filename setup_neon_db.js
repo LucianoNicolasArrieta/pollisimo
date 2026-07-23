@@ -75,16 +75,29 @@ async function run() {
     `;
 
     await sql`
+      CREATE TABLE IF NOT EXISTS clientes (
+        id VARCHAR(36) PRIMARY KEY,
+        nombre VARCHAR(255) NOT NULL,
+        direccion VARCHAR(255),
+        telefono VARCHAR(100),
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+    `;
+
+    await sql`
       CREATE TABLE IF NOT EXISTS ventas (
         id VARCHAR(36) PRIMARY KEY,
         fecha DATE NOT NULL,
         cliente VARCHAR(255) NOT NULL,
+        cliente_id VARCHAR(36) REFERENCES clientes(id) ON DELETE SET NULL,
         producto_id VARCHAR(36) NOT NULL REFERENCES productos(id) ON DELETE CASCADE,
         peso_kg NUMERIC(10, 3) NULL,
         precio_por_kg NUMERIC(10, 2) NOT NULL,
         precio_calculado NUMERIC(10, 2) DEFAULT 0.00,
         total_final NUMERIC(10, 2) DEFAULT 0.00,
         medio_pago VARCHAR(50) DEFAULT 'Efectivo',
+        monto_efectivo NUMERIC(10, 2) DEFAULT 0.00,
+        monto_transferencia NUMERIC(10, 2) DEFAULT 0.00,
         estado VARCHAR(50) DEFAULT 'Pendiente',
         notas TEXT,
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP

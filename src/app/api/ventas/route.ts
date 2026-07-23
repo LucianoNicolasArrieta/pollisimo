@@ -3,14 +3,37 @@ import { query } from '@/lib/db';
 import { Venta } from '@/lib/types';
 import { randomUUID } from 'crypto';
 
+async function resolveClientId(clienteName: string, clienteIdInput?: string): Promise<{ id: string; nombre: string }> {
+  const cleanName = clienteName.trim();
+  if (clienteIdInput) {
+    const existingById = await query<any[]>('SELECT id, nombre FROM clientes WHERE id = ?', [clienteIdInput]);
+    if (existingById.length > 0) {
+      return { id: existingById[0].id, nombre: existingById[0].nombre };
+    }
+  }
+
+  // Case-insensitive search by name
+  const existingByName = await query<any[]>('SELECT id, nombre FROM clientes WHERE LOWER(nombre) = LOWER(?)', [cleanName]);
+  if (existingByName.length > 0) {
+    return { id: existingByName[0].id, nombre: existingByName[0].nombre };
+  }
+
+  // Create new client on the fly
+  const newId = randomUUID();
+  await query('INSERT INTO clientes (id, nombre) VALUES (?, ?)', [newId, cleanName]);
+  return { id: newId, nombre: cleanName };
+}
+
 export async function GET() {
   try {
     const rows = await query<any[]>(
-      `SELECT v.id, v.fecha, v.cliente, v.producto_id, p.nombre AS producto_nombre,
+      `SELECT v.id, v.fecha, v.cliente, v.cliente_id, c.direccion AS cliente_direccion, c.telefono AS cliente_telefono,
+              v.producto_id, p.nombre AS producto_nombre,
               v.peso_kg, v.precio_por_kg, v.precio_calculado, v.total_final, v.medio_pago,
               v.monto_efectivo, v.monto_transferencia, v.estado, v.notas, v.created_at
        FROM ventas v
        JOIN productos p ON p.id = v.producto_id
+       LEFT JOIN clientes c ON c.id = v.cliente_id OR LOWER(c.nombre) = LOWER(v.cliente)
        ORDER BY v.fecha DESC, v.created_at DESC`
     );
 
@@ -36,6 +59,7 @@ export async function POST(req: Request) {
     const {
       fecha = new Date().toISOString().split('T')[0],
       cliente,
+      cliente_id,
       producto_id,
       peso_kg = null,
       precio_por_kg,
@@ -49,6 +73,8 @@ export async function POST(req: Request) {
     if (!cliente || !producto_id) {
       return NextResponse.json({ error: 'Cliente y producto son requeridos' }, { status: 400 });
     }
+
+    const { id: resolvedClienteId, nombre: resolvedClienteNombre } = await resolveClientId(cliente, cliente_id);
 
     let precioKg = precio_por_kg;
     if (!precioKg) {
@@ -66,8 +92,8 @@ export async function POST(req: Request) {
     const parsedTransferencia = Number(monto_transferencia) || 0;
 
     await query(
-      'INSERT INTO ventas (id, fecha, cliente, producto_id, peso_kg, precio_por_kg, medio_pago, monto_efectivo, monto_transferencia, estado, notas) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [id, fecha, cliente, producto_id, parsedPeso, precioKg, medio_pago, parsedEfectivo, parsedTransferencia, estado, notas]
+      'INSERT INTO ventas (id, fecha, cliente, cliente_id, producto_id, peso_kg, precio_por_kg, medio_pago, monto_efectivo, monto_transferencia, estado, notas) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, fecha, resolvedClienteNombre, resolvedClienteId, producto_id, parsedPeso, precioKg, medio_pago, parsedEfectivo, parsedTransferencia, estado, notas]
     );
 
     const createdRows = await query<any[]>('SELECT * FROM ventas WHERE id = ?', [id]);
@@ -81,11 +107,13 @@ export async function POST(req: Request) {
 export async function PUT(req: Request) {
   try {
     const body = await req.json();
-    const { id, fecha, cliente, producto_id, peso_kg, precio_por_kg, medio_pago, monto_efectivo = 0, monto_transferencia = 0, estado, notas } = body;
+    const { id, fecha, cliente, cliente_id, producto_id, peso_kg, precio_por_kg, medio_pago, monto_efectivo = 0, monto_transferencia = 0, estado, notas } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'ID es requerido' }, { status: 400 });
     }
+
+    const { id: resolvedClienteId, nombre: resolvedClienteNombre } = await resolveClientId(cliente, cliente_id);
 
     const parsedPeso = peso_kg !== null && peso_kg !== '' && !isNaN(Number(peso_kg)) ? Number(peso_kg) : null;
     const parsedEfectivo = Number(monto_efectivo) || 0;
@@ -93,9 +121,9 @@ export async function PUT(req: Request) {
 
     await query(
       `UPDATE ventas
-       SET fecha = ?, cliente = ?, producto_id = ?, peso_kg = ?, precio_por_kg = ?, medio_pago = ?, monto_efectivo = ?, monto_transferencia = ?, estado = ?, notas = ?
+       SET fecha = ?, cliente = ?, cliente_id = ?, producto_id = ?, peso_kg = ?, precio_por_kg = ?, medio_pago = ?, monto_efectivo = ?, monto_transferencia = ?, estado = ?, notas = ?
        WHERE id = ?`,
-      [fecha, cliente, producto_id, parsedPeso, precio_por_kg, medio_pago, parsedEfectivo, parsedTransferencia, estado, notas, id]
+      [fecha, resolvedClienteNombre, resolvedClienteId, producto_id, parsedPeso, precio_por_kg, medio_pago, parsedEfectivo, parsedTransferencia, estado, notas, id]
     );
 
     const updatedRows = await query<any[]>('SELECT * FROM ventas WHERE id = ?', [id]);

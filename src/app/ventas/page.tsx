@@ -2,26 +2,31 @@
 
 import React, { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Venta, Producto, EstadoVenta, MedioPago } from '@/lib/types';
+import { Venta, Producto, EstadoVenta, MedioPago, ClienteConStats } from '@/lib/types';
 import { formatCurrency, formatDate, roundToCentena } from '@/lib/utils';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Modal } from '@/components/Modal';
-import { ShoppingBag, Plus, Edit2, Trash2, Search, Calendar } from 'lucide-react';
+import { ShoppingBag, Plus, Edit2, Trash2, Search, Calendar, User, Zap, Scale, CheckCircle2 } from 'lucide-react';
 
 function VentasContent() {
   const searchParams = useSearchParams();
   const [ventas, setVentas] = useState<Venta[]>([]);
   const [productos, setProductos] = useState<Producto[]>([]);
+  const [clientes, setClientes] = useState<ClienteConStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterEstado, setFilterEstado] = useState<string>('Todos');
   const [searchQuery, setSearchQuery] = useState('');
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingVenta, setEditingVenta] = useState<Venta | null>(null);
+  const [isCargaRapida, setIsCargaRapida] = useState(false);
 
   // Form state
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
-  const [cliente, setCliente] = useState('');
+  const [clienteInput, setClienteInput] = useState('');
+  const [clienteId, setClienteId] = useState('');
+  const [showClientSuggestions, setShowClientSuggestions] = useState(false);
+
   const [productoId, setProductoId] = useState('');
   const [pesoKg, setPesoKg] = useState('');
   const [precioPorKg, setPrecioPorKg] = useState('');
@@ -35,15 +40,23 @@ function VentasContent() {
   const fetchVentasAndProductos = async () => {
     setLoading(true);
     try {
-      const [resV, resP] = await Promise.all([fetch('/api/ventas'), fetch('/api/productos')]);
-      if (resV.ok && resP.ok) {
+      const [resV, resP, resC] = await Promise.all([
+        fetch('/api/ventas'),
+        fetch('/api/productos'),
+        fetch('/api/clientes'),
+      ]);
+
+      if (resV.ok && resP.ok && resC.ok) {
         const dataV = await resV.json();
         const dataP = await resP.json();
+        const dataC = await resC.json();
+
         setVentas(dataV);
         setProductos(dataP);
+        setClientes(dataC.clientes || []);
       }
     } catch (e) {
-      console.error('Error fetching ventas:', e);
+      console.error('Error fetching ventas/productos/clientes:', e);
     } finally {
       setLoading(false);
     }
@@ -54,15 +67,22 @@ function VentasContent() {
   }, []);
 
   useEffect(() => {
-    if (searchParams.get('action') === 'new') {
-      openCreateModal();
+    const action = searchParams.get('action');
+    if (action === 'new') {
+      openCreateModal(false);
+    } else if (action === 'quick') {
+      openCreateModal(true);
     }
   }, [searchParams, productos]);
 
-  const openCreateModal = () => {
+  const openCreateModal = (quickMode = false) => {
     setEditingVenta(null);
+    setIsCargaRapida(quickMode);
     setFecha(new Date().toISOString().split('T')[0]);
-    setCliente('');
+    setClienteInput('');
+    setClienteId('');
+    setShowClientSuggestions(false);
+
     const defaultProd = productos.length > 0 ? productos[0] : null;
     setProductoId(defaultProd ? defaultProd.id : '');
     setPrecioPorKg(defaultProd ? defaultProd.precio_venta_por_kg.toString() : '9500');
@@ -70,22 +90,26 @@ function VentasContent() {
     setMedioPago('Efectivo');
     setMontoEfectivo('');
     setMontoTransferencia('');
-    setEstado('Pendiente');
+    setEstado(quickMode ? 'Reservado' : 'Pendiente');
     setNotas('');
     setIsModalOpen(true);
   };
 
-  const openEditModal = (v: Venta) => {
+  const openEditModal = (v: Venta, completeOnly = false) => {
     setEditingVenta(v);
+    setIsCargaRapida(false);
     setFecha(v.fecha);
-    setCliente(v.cliente);
+    setClienteInput(v.cliente);
+    setClienteId(v.cliente_id || '');
+    setShowClientSuggestions(false);
+
     setProductoId(v.producto_id);
     setPrecioPorKg(v.precio_por_kg.toString());
     setPesoKg(v.peso_kg !== null && v.peso_kg !== undefined ? v.peso_kg.toString() : '');
     setMedioPago(v.medio_pago);
     setMontoEfectivo(v.monto_efectivo ? v.monto_efectivo.toString() : '');
     setMontoTransferencia(v.monto_transferencia ? v.monto_transferencia.toString() : '');
-    setEstado(v.estado);
+    setEstado(completeOnly && v.estado !== 'Entregado' ? 'Entregado' : v.estado);
     setNotas(v.notas || '');
     setIsModalOpen(true);
   };
@@ -96,6 +120,17 @@ function VentasContent() {
     if (prod) {
       setPrecioPorKg(prod.precio_venta_por_kg.toString());
     }
+  };
+
+  // Client Autocomplete Logic (Case Insensitive)
+  const clientSuggestions = clientes.filter((c) =>
+    c.nombre.toLowerCase().includes(clienteInput.trim().toLowerCase())
+  );
+
+  const selectClientSuggestion = (c: ClienteConStats) => {
+    setClienteInput(c.nombre);
+    setClienteId(c.id);
+    setShowClientSuggestions(false);
   };
 
   // Live preview calculation for modal
@@ -116,8 +151,9 @@ function VentasContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!cliente || !productoId) return;
+    if (!clienteInput || !productoId) return;
     setSaving(true);
+
     try {
       const efVal = medioPago === 'Mixto' ? Number(montoEfectivo) || 0 : (medioPago === 'Efectivo' ? liveTotalFinal : 0);
       const trVal = medioPago === 'Mixto' ? Number(montoTransferencia) || 0 : (medioPago === 'Transferencia' ? liveTotalFinal : 0);
@@ -125,14 +161,15 @@ function VentasContent() {
       const payload = {
         id: editingVenta ? editingVenta.id : undefined,
         fecha,
-        cliente,
+        cliente: clienteInput,
+        cliente_id: clienteId || undefined,
         producto_id: productoId,
-        peso_kg: pesoKg !== '' ? Number(pesoKg) : null,
+        peso_kg: isCargaRapida ? null : (pesoKg !== '' ? Number(pesoKg) : null),
         precio_por_kg: Number(precioPorKg),
         medio_pago: medioPago,
         monto_efectivo: efVal,
         monto_transferencia: trVal,
-        estado,
+        estado: isCargaRapida ? 'Reservado' : estado,
         notas,
       };
 
@@ -183,16 +220,25 @@ function VentasContent() {
             Ventas y Reservas
           </h1>
           <p className="text-xs sm:text-sm text-gray-600 mt-0.5">
-            Admite pagos en Efectivo, Transferencia o <b>Mixto (combinado)</b>.
+            Carga rápida de pedidos y control de clientes normalizados.
           </p>
         </div>
-        <button
-          onClick={openCreateModal}
-          className="flex items-center justify-center gap-2 bg-[#aa1919] hover:bg-[#881313] text-white px-5 py-3 sm:py-2.5 rounded-xl font-bold text-sm shadow-md transition-all active:scale-95 w-full sm:w-auto"
-        >
-          <Plus className="w-5 h-5" />
-          Nueva Venta
-        </button>
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <button
+            onClick={() => openCreateModal(true)}
+            className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-red-950 px-3.5 py-2.5 rounded-xl font-extrabold text-xs shadow-sm transition-all active:scale-95"
+          >
+            <Zap className="w-4 h-4 fill-current" />
+            Carga Rápida
+          </button>
+          <button
+            onClick={() => openCreateModal(false)}
+            className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 bg-[#aa1919] hover:bg-[#881313] text-white px-4 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all active:scale-95"
+          >
+            <Plus className="w-4 h-4" />
+            Nueva Venta
+          </button>
+        </div>
       </div>
 
       {/* Filters and Search Bar */}
@@ -227,7 +273,7 @@ function VentasContent() {
         </div>
       </div>
 
-      {/* Mobile Card List View (Phones) */}
+      {/* Mobile Card List View */}
       <div className="block md:hidden space-y-3">
         {loading ? (
           <div className="text-center py-10 text-gray-500">Cargando ventas...</div>
@@ -238,11 +284,9 @@ function VentasContent() {
         ) : (
           filteredVentas.map((v) => {
             const numBandejas = v.peso_kg !== null ? Math.max(1, Math.floor(v.peso_kg)) : 1;
+            const isPendingOrReserved = v.estado === 'Pendiente' || v.estado === 'Reservado';
             return (
-              <div
-                key={v.id}
-                className="bg-white border border-[#ebdcca] rounded-2xl p-4 shadow-xs space-y-3"
-              >
+              <div key={v.id} className="bg-white border border-[#ebdcca] rounded-2xl p-4 shadow-xs space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-gray-500 flex items-center gap-1">
                     <Calendar className="w-3.5 h-3.5 text-gray-400" />
@@ -278,19 +322,27 @@ function VentasContent() {
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
+                    {isPendingOrReserved && (
+                      <button
+                        onClick={() => openEditModal(v, true)}
+                        className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-xs transition-colors flex items-center gap-1"
+                      >
+                        <Scale className="w-3.5 h-3.5" />
+                        Pesar / Entregar
+                      </button>
+                    )}
                     <button
-                      onClick={() => openEditModal(v)}
-                      className="p-2 text-amber-800 bg-amber-50 rounded-xl font-bold text-xs hover:bg-amber-100 flex items-center gap-1"
+                      onClick={() => openEditModal(v, false)}
+                      className="p-1.5 text-amber-800 bg-amber-50 rounded-xl font-bold text-xs hover:bg-amber-100 flex items-center gap-1"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
-                      Editar
                     </button>
                     <button
                       onClick={() => handleDelete(v.id)}
-                      className="p-2 text-gray-400 hover:text-red-700 rounded-xl"
+                      className="p-1.5 text-gray-400 hover:text-red-700 rounded-xl"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>
@@ -300,7 +352,7 @@ function VentasContent() {
         )}
       </div>
 
-      {/* Desktop Table View (Laptops/PC) */}
+      {/* Desktop Table View */}
       <div className="hidden md:block">
         {loading ? (
           <div className="text-center py-12 text-gray-500">Cargando ventas...</div>
@@ -329,6 +381,7 @@ function VentasContent() {
                 <tbody className="divide-y divide-gray-100 font-medium">
                   {filteredVentas.map((v) => {
                     const bandejasCount = v.peso_kg !== null ? Math.max(1, Math.floor(v.peso_kg)) : 1;
+                    const isPendingOrReserved = v.estado === 'Pendiente' || v.estado === 'Reservado';
                     return (
                       <tr key={v.id} className="hover:bg-[#fcf8f2] transition-colors">
                         <td className="px-4 py-3.5">
@@ -372,18 +425,28 @@ function VentasContent() {
                           )}
                         </td>
                         <td className="px-4 py-3.5 text-right">
-                          <div className="flex items-center justify-end gap-1">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {isPendingOrReserved && (
+                              <button
+                                onClick={() => openEditModal(v, true)}
+                                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs shadow-xs transition-colors flex items-center gap-1"
+                                title="Pesar y Entregar Venta"
+                              >
+                                <Scale className="w-3.5 h-3.5" />
+                                Pesar / Entregar
+                              </button>
+                            )}
                             <button
-                              onClick={() => openEditModal(v)}
+                              onClick={() => openEditModal(v, false)}
                               className="p-1.5 text-gray-600 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors"
-                              title="Editar / Pesar bandeja"
+                              title="Editar Venta"
                             >
                               <Edit2 className="w-4 h-4" />
                             </button>
                             <button
                               onClick={() => handleDelete(v.id)}
                               className="p-1.5 text-gray-400 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
-                              title="Eliminar"
+                              title="Eliminar Venta"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -401,20 +464,51 @@ function VentasContent() {
 
       {/* Floating Action Button (FAB) for Mobile Quick Add */}
       <button
-        onClick={openCreateModal}
+        onClick={() => openCreateModal(true)}
         className="md:hidden fixed bottom-6 right-5 z-40 bg-[#aa1919] text-white p-4 rounded-full shadow-2xl active:scale-95 transition-transform flex items-center justify-center border-2 border-white"
-        aria-label="Nueva Venta"
+        aria-label="Carga Rápida"
       >
-        <Plus className="w-7 h-7" />
+        <Zap className="w-7 h-7 fill-current" />
       </button>
 
       {/* Modal Form */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title={editingVenta ? 'Editar Venta / Reserva' : 'Nueva Venta / Reserva'}
+        title={editingVenta ? 'Editar Venta / Reserva' : isCargaRapida ? '⚡ Carga Rápida de Pedido' : 'Nueva Venta / Reserva'}
       >
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Mode Switcher Pills */}
+          {!editingVenta && (
+            <div className="flex bg-[#fbf5ea] p-1 rounded-xl border border-[#eee0cb]">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCargaRapida(true);
+                  setEstado('Reservado');
+                }}
+                className={`flex-1 py-2 text-xs font-extrabold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                  isCargaRapida ? 'bg-[#aa1919] text-white shadow-xs' : 'text-gray-600 hover:text-[#aa1919]'
+                }`}
+              >
+                <Zap className="w-3.5 h-3.5 fill-current" />
+                ⚡ Carga Rápida (Solo Cliente y Producto)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCargaRapida(false);
+                  setEstado('Pendiente');
+                }}
+                className={`flex-1 py-2 text-xs font-extrabold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                  !isCargaRapida ? 'bg-[#aa1919] text-white shadow-xs' : 'text-gray-600 hover:text-[#aa1919]'
+                }`}
+              >
+                📋 Carga Completa (Con Peso y Pago)
+              </button>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Fecha *</label>
@@ -423,19 +517,52 @@ function VentasContent() {
                 required
                 value={fecha}
                 onChange={(e) => setFecha(e.target.value)}
-                className="w-full px-3.5 py-3 bg-white border border-gray-300 rounded-xl text-sm focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
+                className="w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-xl text-sm focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
               />
             </div>
-            <div>
-              <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Cliente *</label>
+
+            {/* CLIENT AUTOCOMPLETE INPUT */}
+            <div className="relative">
+              <label className="block text-xs font-bold text-gray-700 uppercase mb-1 flex items-center justify-between">
+                <span>Cliente *</span>
+                {clienteId && <span className="text-[10px] text-emerald-700 font-bold">✓ Vinculado</span>}
+              </label>
               <input
                 type="text"
                 required
-                placeholder="Nombre del cliente"
-                value={cliente}
-                onChange={(e) => setCliente(e.target.value)}
-                className="w-full px-3.5 py-3 bg-white border border-gray-300 rounded-xl text-sm font-bold focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
+                placeholder="Escribe el nombre del cliente..."
+                value={clienteInput}
+                onChange={(e) => {
+                  setClienteInput(e.target.value);
+                  setClienteId('');
+                  setShowClientSuggestions(true);
+                }}
+                onFocus={() => setShowClientSuggestions(true)}
+                className="w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-xl text-sm font-bold focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
               />
+
+              {/* Suggestions Dropdown */}
+              {showClientSuggestions && clienteInput.trim().length > 0 && (
+                <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl max-h-40 overflow-y-auto">
+                  {clientSuggestions.length > 0 ? (
+                    clientSuggestions.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => selectClientSuggestion(c)}
+                        className="w-full text-left px-3.5 py-2 hover:bg-[#fbf5ea] text-xs font-bold text-gray-800 flex items-center justify-between border-b border-gray-50"
+                      >
+                        <span>{c.nombre}</span>
+                        {c.telefono && <span className="text-[10px] text-gray-400 font-normal">{c.telefono}</span>}
+                      </button>
+                    ))
+                  ) : (
+                    <div className="px-3.5 py-2 text-xs text-amber-700 font-medium">
+                      ✨ Se creará el cliente <b>"{clienteInput.trim()}"</b> automáticamente.
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -445,7 +572,7 @@ function VentasContent() {
               required
               value={productoId}
               onChange={(e) => handleProductoChange(e.target.value)}
-              className="w-full px-3.5 py-3 bg-white border border-gray-300 rounded-xl text-sm focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
+              className="w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-xl text-sm focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
             >
               {productos.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -455,114 +582,129 @@ function VentasContent() {
             </select>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
-                Peso Real (kg)
-              </label>
-              <input
-                type="number"
-                step="0.001"
-                inputMode="decimal"
-                placeholder="Ej: 1.084 o 2.263"
-                value={pesoKg}
-                onChange={(e) => setPesoKg(e.target.value)}
-                className="w-full px-3.5 py-3 bg-white border border-gray-300 rounded-xl text-sm font-extrabold focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
-              />
-              <span className="text-[10px] text-gray-500">
-                {livePeso ? `Cómputo: ${liveBandejas} ${liveBandejas === 1 ? 'bandeja' : 'bandejas'}` : 'Vacío = Reserva 1 bandeja'}
-              </span>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Precio / kg ($) *</label>
-              <input
-                type="number"
-                step="0.01"
-                inputMode="decimal"
-                required
-                value={precioPorKg}
-                onChange={(e) => setPrecioPorKg(e.target.value)}
-                className="w-full px-3.5 py-3 bg-white border border-gray-300 rounded-xl text-sm focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
-              />
-            </div>
-          </div>
-
-          {/* Realtime Live Price Preview */}
-          <div className="bg-[#fbf5ea] border border-[#eee0cb] p-3.5 rounded-xl space-y-1.5">
-            <div className="flex justify-between text-xs text-gray-600">
-              <span>Bandejas que representa:</span>
-              <span className="font-bold text-[#aa1919]">{liveBandejas} {liveBandejas === 1 ? 'bandeja' : 'bandejas'}</span>
-            </div>
-            <div className="flex justify-between items-center border-t border-[#ebdcca] pt-1">
-              <span className="text-xs font-extrabold text-[#aa1919] uppercase">
-                Total Final Redondeado:
-              </span>
-              <span className="text-lg font-black text-emerald-800">
-                {formatCurrency(liveTotalFinal)}
-              </span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Medio de Pago *</label>
-              <select
-                value={medioPago}
-                onChange={(e) => setMedioPago(e.target.value as MedioPago)}
-                className="w-full px-3.5 py-3 bg-white border border-gray-300 rounded-xl text-sm font-bold focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
-              >
-                <option value="Efectivo">💵 Efectivo</option>
-                <option value="Transferencia">💳 Transferencia</option>
-                <option value="Mixto">🔀 Mixto (Efectivo + Transferencia)</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Estado de la Venta *</label>
-              <select
-                value={estado}
-                onChange={(e) => setEstado(e.target.value as EstadoVenta)}
-                className="w-full px-3.5 py-3 bg-white border border-gray-300 rounded-xl text-sm font-bold focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
-              >
-                <option value="Reservado">📌 Reservado</option>
-                <option value="Pendiente">⏳ Pendiente</option>
-                <option value="Entregado">✓ Entregado</option>
-                <option value="Cancelado">✕ Cancelado</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Conditional Mixed Payment Fields */}
-          {medioPago === 'Mixto' && (
-            <div className="bg-purple-50 border border-purple-200 p-3.5 rounded-xl space-y-3">
-              <p className="text-xs font-bold text-purple-900">Desglose de Pago Combinado:</p>
+          {/* If NOT Carga Rápida, show full weight & payment details */}
+          {!isCargaRapida && (
+            <>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-bold text-purple-800 uppercase mb-1">Monto en Efectivo ($)</label>
+                  <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                    Peso Real (kg)
+                  </label>
                   <input
                     type="number"
-                    step="0.01"
+                    step="0.001"
                     inputMode="decimal"
-                    placeholder="Ej: 5000"
-                    value={montoEfectivo}
-                    onChange={(e) => handleEfectivoChange(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-purple-300 rounded-xl text-sm font-bold focus:outline-hidden focus:ring-2 focus:ring-purple-600"
+                    placeholder="Ej: 1.084 o 2.263"
+                    value={pesoKg}
+                    onChange={(e) => setPesoKg(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-xl text-sm font-extrabold focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
                   />
+                  <span className="text-[10px] text-gray-500">
+                    {livePeso ? `Cómputo: ${liveBandejas} ${liveBandejas === 1 ? 'bandeja' : 'bandejas'}` : 'Vacío = Reserva 1 bandeja'}
+                  </span>
                 </div>
+
                 <div>
-                  <label className="block text-[11px] font-bold text-purple-800 uppercase mb-1">Monto por Transferencia ($)</label>
+                  <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Precio / kg ($) *</label>
                   <input
                     type="number"
                     step="0.01"
                     inputMode="decimal"
-                    placeholder="Ej: 5000"
-                    value={montoTransferencia}
-                    onChange={(e) => setMontoTransferencia(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-purple-300 rounded-xl text-sm font-bold focus:outline-hidden focus:ring-2 focus:ring-purple-600"
+                    required
+                    value={precioPorKg}
+                    onChange={(e) => setPrecioPorKg(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-xl text-sm focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
                   />
                 </div>
               </div>
+
+              {/* Realtime Live Price Preview */}
+              <div className="bg-[#fbf5ea] border border-[#eee0cb] p-3 rounded-xl space-y-1">
+                <div className="flex justify-between text-xs text-gray-600">
+                  <span>Bandejas que representa:</span>
+                  <span className="font-bold text-[#aa1919]">{liveBandejas} {liveBandejas === 1 ? 'bandeja' : 'bandejas'}</span>
+                </div>
+                <div className="flex justify-between items-center border-t border-[#ebdcca] pt-1">
+                  <span className="text-xs font-extrabold text-[#aa1919] uppercase">
+                    Total Final Redondeado:
+                  </span>
+                  <span className="text-lg font-black text-emerald-800">
+                    {formatCurrency(liveTotalFinal)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Medio de Pago *</label>
+                  <select
+                    value={medioPago}
+                    onChange={(e) => setMedioPago(e.target.value as MedioPago)}
+                    className="w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-xl text-sm font-bold focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
+                  >
+                    <option value="Efectivo">💵 Efectivo</option>
+                    <option value="Transferencia">💳 Transferencia</option>
+                    <option value="Mixto">🔀 Mixto (Efectivo + Transferencia)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Estado de la Venta *</label>
+                  <select
+                    value={estado}
+                    onChange={(e) => setEstado(e.target.value as EstadoVenta)}
+                    className="w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-xl text-sm font-bold focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
+                  >
+                    <option value="Reservado">📌 Reservado</option>
+                    <option value="Pendiente">⏳ Pendiente</option>
+                    <option value="Entregado">✓ Entregado</option>
+                    <option value="Cancelado">✕ Cancelado</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Conditional Mixed Payment Fields */}
+              {medioPago === 'Mixto' && (
+                <div className="bg-purple-50 border border-purple-200 p-3 rounded-xl space-y-2">
+                  <p className="text-xs font-bold text-purple-900">Desglose de Pago Combinado:</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-purple-800 uppercase mb-1">Monto Efectivo ($)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        placeholder="Ej: 5000"
+                        value={montoEfectivo}
+                        onChange={(e) => handleEfectivoChange(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-purple-300 rounded-xl text-sm font-bold focus:outline-hidden focus:ring-2 focus:ring-purple-600"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-purple-800 uppercase mb-1">Monto Transferencia ($)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        placeholder="Ej: 5000"
+                        value={montoTransferencia}
+                        onChange={(e) => setMontoTransferencia(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-purple-300 rounded-xl text-sm font-bold focus:outline-hidden focus:ring-2 focus:ring-purple-600"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {isCargaRapida && (
+            <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl text-xs space-y-1 text-amber-950">
+              <p className="font-bold flex items-center gap-1">
+                <Zap className="w-3.5 h-3.5 fill-current text-amber-700" />
+                Pedido cargado en borrador (Reservado / Pendiente)
+              </p>
+              <p className="text-gray-600 text-[11px]">
+                Podrás pesar las bandejas y definir el medio de pago más tarde al entregar.
+              </p>
             </div>
           )}
 
@@ -570,10 +712,10 @@ function VentasContent() {
             <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Notas / Recordatorios</label>
             <input
               type="text"
-              placeholder="ej. Retira a las 18hs"
+              placeholder="ej. Retira a las 18hs o reserva 2 bandejas"
               value={notas}
               onChange={(e) => setNotas(e.target.value)}
-              className="w-full px-3.5 py-3 bg-white border border-gray-300 rounded-xl text-sm focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
+              className="w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-xl text-sm focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
             />
           </div>
 
@@ -581,16 +723,16 @@ function VentasContent() {
             <button
               type="button"
               onClick={() => setIsModalOpen(false)}
-              className="px-4 py-2.5 text-xs font-bold text-gray-600 hover:bg-gray-100 rounded-xl"
+              className="px-4 py-2 text-xs font-bold text-gray-600 hover:bg-gray-100 rounded-xl"
             >
               Cancelar
             </button>
             <button
               type="submit"
               disabled={saving}
-              className="px-5 py-3 bg-[#aa1919] hover:bg-[#881313] text-white text-xs font-bold rounded-xl shadow-md transition-all active:scale-95 disabled:opacity-50"
+              className="px-5 py-2.5 bg-[#aa1919] hover:bg-[#881313] text-white text-xs font-bold rounded-xl shadow-md transition-all active:scale-95 disabled:opacity-50"
             >
-              {saving ? 'Guardando...' : editingVenta ? 'Actualizar Venta' : 'Guardar Venta'}
+              {saving ? 'Guardando...' : editingVenta ? 'Actualizar Venta' : isCargaRapida ? 'Guardar Reserva Rápida' : 'Guardar Venta'}
             </button>
           </div>
         </form>
