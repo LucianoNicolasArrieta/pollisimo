@@ -6,6 +6,8 @@ export interface Producto {
   costo_estimado_por_kg: number;
   stock_inicial_kilos?: number;
   stock_inicial_bandejas?: number;
+  kilos_disponibles?: number;
+  bandejas_disponibles?: number;
   created_at?: string;
   margen_porcentaje?: number;
 }

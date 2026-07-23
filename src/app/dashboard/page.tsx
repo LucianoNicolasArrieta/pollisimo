@@ -158,11 +158,11 @@ export default function DashboardPage() {
           </div>
           <div className="mt-3">
             <p className="text-2xl sm:text-3xl font-black text-[#aa1919]">
-              {stats?.bandejas_disponibles_totales || 0}{' '}
+              {stats?.bandejas_disponibles_totales !== undefined ? stats.bandejas_disponibles_totales : 0}{' '}
               <span className="text-sm font-semibold text-gray-600">bandejas</span>
             </p>
             <p className="text-xs text-gray-500 mt-1">
-              ~ {stats?.kilos_disponibles_totales ? stats.kilos_disponibles_totales.toFixed(2) : 0} kg libres
+              ~ {stats?.kilos_disponibles_totales !== undefined ? stats.kilos_disponibles_totales.toFixed(2) : '0.00'} kg libres
             </p>
           </div>
         </div>
@@ -207,10 +207,17 @@ export default function DashboardPage() {
               <ArrowUpRight className="w-4 h-4 text-[#aa1919]" />
             </Link>
             <Link
+              href="/stock"
+              className="flex items-center justify-between bg-[#faf5ea] hover:bg-[#f3e6d0] border border-[#ebdcca] p-3.5 rounded-xl font-bold text-sm text-[#4a3728] transition-colors"
+            >
+              <span>🍗 Stock Milanesas</span>
+              <ArrowUpRight className="w-4 h-4 text-[#aa1919]" />
+            </Link>
+            <Link
               href="/produccion"
               className="flex items-center justify-between bg-[#faf5ea] hover:bg-[#f3e6d0] border border-[#ebdcca] p-3.5 rounded-xl font-bold text-sm text-[#4a3728] transition-colors"
             >
-              <span>🍗 Nueva Tanda</span>
+              <span>🏭 Nueva Tanda</span>
               <ArrowUpRight className="w-4 h-4 text-[#aa1919]" />
             </Link>
             <Link
@@ -218,13 +225,6 @@ export default function DashboardPage() {
               className="flex items-center justify-between bg-[#faf5ea] hover:bg-[#f3e6d0] border border-[#ebdcca] p-3.5 rounded-xl font-bold text-sm text-[#4a3728] transition-colors"
             >
               <span>🧾 Cargar Compra</span>
-              <ArrowUpRight className="w-4 h-4 text-[#aa1919]" />
-            </Link>
-            <Link
-              href="/stock"
-              className="flex items-center justify-between bg-[#faf5ea] hover:bg-[#f3e6d0] border border-[#ebdcca] p-3.5 rounded-xl font-bold text-sm text-[#4a3728] transition-colors"
-            >
-              <span>📦 Control Insumos</span>
               <ArrowUpRight className="w-4 h-4 text-[#aa1919]" />
             </Link>
           </div>

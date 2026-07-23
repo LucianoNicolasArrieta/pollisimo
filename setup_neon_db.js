@@ -17,6 +17,8 @@ async function run() {
         unidad VARCHAR(50) DEFAULT 'kg',
         precio_venta_por_kg NUMERIC(10, 2) NOT NULL,
         costo_estimado_por_kg NUMERIC(10, 2) DEFAULT 0.00,
+        stock_inicial_kilos NUMERIC(10, 3) DEFAULT 0.000,
+        stock_inicial_bandejas INT DEFAULT 0,
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       );
     `;
@@ -153,12 +155,12 @@ async function run() {
       SELECT 
         p.id AS producto_id,
         p.nombre AS producto_nombre,
-        COALESCE(prod.kilos_producidos, 0) AS kilos_producidos,
-        COALESCE(prod.bandejas_producidas, 0) AS bandejas_producidas,
+        (COALESCE(p.stock_inicial_kilos, 0) + COALESCE(prod.kilos_producidos, 0)) AS kilos_producidos,
+        (COALESCE(p.stock_inicial_bandejas, 0) + COALESCE(prod.bandejas_producidas, 0)) AS bandejas_producidas,
         COALESCE(v.kilos_vendidos_reservados, 0) AS kilos_vendidos_reservados,
         COALESCE(v.bandejas_vendidas_reservadas, 0) AS bandejas_vendidas_reservadas,
-        (COALESCE(prod.kilos_producidos, 0) - COALESCE(v.kilos_vendidos_reservados, 0)) AS kilos_disponibles,
-        (COALESCE(prod.bandejas_producidas, 0) - COALESCE(v.bandejas_vendidas_reservadas, 0)) AS bandejas_disponibles
+        ((COALESCE(p.stock_inicial_kilos, 0) + COALESCE(prod.kilos_producidos, 0)) - COALESCE(v.kilos_vendidos_reservados, 0)) AS kilos_disponibles,
+        ((COALESCE(p.stock_inicial_bandejas, 0) + COALESCE(prod.bandejas_producidas, 0)) - COALESCE(v.bandejas_vendidas_reservadas, 0)) AS bandejas_disponibles
       FROM productos p
       LEFT JOIN (
         SELECT producto_id, SUM(kilos_totales) AS kilos_producidos, SUM(bandejas_obtenidas) AS bandejas_producidas

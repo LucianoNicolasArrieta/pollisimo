@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { Produccion, ResumenProduccion, Producto, InsumoStock } from '@/lib/types';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Modal } from '@/components/Modal';
-import { Factory, Plus, Trash2, Check, X, Layers, Scale, DollarSign } from 'lucide-react';
+import { Factory, Plus, Trash2, Check, X, Layers, Scale, DollarSign, SlidersHorizontal, Beef } from 'lucide-react';
 
 export default function ProduccionPage() {
   const [tandas, setTandas] = useState<Produccion[]>([]);
@@ -13,6 +13,14 @@ export default function ProduccionPage() {
   const [insumos, setInsumos] = useState<InsumoStock[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Direct Stock Adjust State
+  const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false);
+  const [adjustProductoId, setAdjustProductoId] = useState('');
+  const [adjustProductoNombre, setAdjustProductoNombre] = useState('');
+  const [stockActualBandejas, setStockActualBandejas] = useState('');
+  const [stockActualKilos, setStockActualKilos] = useState('');
+  const [savingAdjust, setSavingAdjust] = useState(false);
 
   // Form state
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
@@ -72,6 +80,43 @@ export default function ProduccionPage() {
     setInsumosUsados(initialInputs);
 
     setIsModalOpen(true);
+  };
+
+  const openAdjustModal = (pId: string, pNombre: string, bandejasLibres: number, kilosLibres: number) => {
+    setAdjustProductoId(pId);
+    setAdjustProductoNombre(pNombre);
+    setStockActualBandejas(bandejasLibres.toString());
+    setStockActualKilos(kilosLibres.toString());
+    setIsAdjustModalOpen(true);
+  };
+
+  const handleAdjustSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adjustProductoId) return;
+    setSavingAdjust(true);
+    try {
+      const payload = {
+        id: adjustProductoId,
+        ajustar_stock_actual: true,
+        stock_actual_bandejas: Number(stockActualBandejas) || 0,
+        stock_actual_kilos: Number(stockActualKilos) || 0,
+      };
+
+      const res = await fetch('/api/productos', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.ok) {
+        setIsAdjustModalOpen(false);
+        fetchData();
+      }
+    } catch (e) {
+      console.error('Error adjusting stock:', e);
+    } finally {
+      setSavingAdjust(false);
+    }
   };
 
   const handleInsumoCantidadChange = (insumoId: string, value: string) => {
@@ -213,6 +258,14 @@ export default function ProduccionPage() {
                   </span>
                 </div>
               </div>
+
+              <button
+                onClick={() => openAdjustModal(r.producto_id, r.producto_nombre, r.bandejas_disponibles, r.kilos_disponibles)}
+                className="w-full flex items-center justify-center gap-1.5 bg-[#faf5ea] hover:bg-[#f3e6d0] border border-[#ebdcca] text-[#881313] py-2 rounded-xl font-bold text-xs shadow-xs transition-colors active:scale-95"
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5 text-[#aa1919]" />
+                Cargar / Ajustar Stock Actual
+              </button>
             </div>
           ))}
         </div>
@@ -416,6 +469,73 @@ export default function ProduccionPage() {
               className="px-5 py-2.5 bg-[#aa1919] hover:bg-[#881313] text-white text-xs font-bold rounded-xl shadow-md transition-all active:scale-95 disabled:opacity-50"
             >
               {saving ? 'Guardando...' : 'Guardar Tanda'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Modal de Carga Directa de Stock Actual */}
+      <Modal
+        isOpen={isAdjustModalOpen}
+        onClose={() => setIsAdjustModalOpen(false)}
+        title={`Ajustar Stock Actual: ${adjustProductoNombre}`}
+      >
+        <form onSubmit={handleAdjustSubmit} className="space-y-4">
+          <div className="bg-[#fbf5ea] border border-[#eee0cb] p-3.5 rounded-xl text-xs space-y-1.5 text-[#4a3728]">
+            <p className="font-bold flex items-center gap-1.5 text-[#aa1919]">
+              <Beef className="w-4 h-4" />
+              Carga Directa de Stock Físico
+            </p>
+            <p className="text-gray-600">
+              Ingresa la cantidad exacta de bandejas y kilos que tienes actualmente disponibles. Se actualizará la disponibilidad inmediatamente.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                Bandejas Actuales *
+              </label>
+              <input
+                type="number"
+                step="1"
+                required
+                placeholder="ej. 15"
+                value={stockActualBandejas}
+                onChange={(e) => setStockActualBandejas(e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-xl text-sm font-bold text-gray-900 focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                Kilos Actuales *
+              </label>
+              <input
+                type="number"
+                step="0.001"
+                required
+                placeholder="ej. 16.500"
+                value={stockActualKilos}
+                onChange={(e) => setStockActualKilos(e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-xl text-sm font-bold text-gray-900 focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-3">
+            <button
+              type="button"
+              onClick={() => setIsAdjustModalOpen(false)}
+              className="px-4 py-2 text-xs font-bold text-gray-600 hover:bg-gray-100 rounded-xl"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={savingAdjust}
+              className="px-5 py-2.5 bg-[#aa1919] hover:bg-[#881313] text-white text-xs font-bold rounded-xl shadow-md transition-all active:scale-95 disabled:opacity-50"
+            >
+              {savingAdjust ? 'Guardando...' : 'Guardar Stock Actual'}
             </button>
           </div>
         </form>
