@@ -1,0 +1,550 @@
+'use client';
+
+import React, { useEffect, useState, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { Venta, Producto, EstadoVenta, MedioPago } from '@/lib/types';
+import { formatCurrency, formatWeight, formatDate, roundToCentena } from '@/lib/utils';
+import { StatusBadge } from '@/components/StatusBadge';
+import { Modal } from '@/components/Modal';
+import { ShoppingBag, Plus, Edit2, Trash2, Scale, DollarSign, Search, Calendar, User, Package } from 'lucide-react';
+
+function VentasContent() {
+  const searchParams = useSearchParams();
+  const [ventas, setVentas] = useState<Venta[]>([]);
+  const [productos, setProductos] = useState<Producto[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filterEstado, setFilterEstado] = useState<string>('Todos');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingVenta, setEditingVenta] = useState<Venta | null>(null);
+
+  // Form state
+  const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
+  const [cliente, setCliente] = useState('');
+  const [productoId, setProductoId] = useState('');
+  const [pesoKg, setPesoKg] = useState('');
+  const [precioPorKg, setPrecioPorKg] = useState('');
+  const [medioPago, setMedioPago] = useState<MedioPago>('Efectivo');
+  const [estado, setEstado] = useState<EstadoVenta>('Pendiente');
+  const [notas, setNotas] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const fetchVentasAndProductos = async () => {
+    setLoading(true);
+    try {
+      const [resV, resP] = await Promise.all([fetch('/api/ventas'), fetch('/api/productos')]);
+      if (resV.ok && resP.ok) {
+        const dataV = await resV.json();
+        const dataP = await resP.json();
+        setVentas(dataV);
+        setProductos(dataP);
+      }
+    } catch (e) {
+      console.error('Error fetching ventas:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchVentasAndProductos();
+  }, []);
+
+  useEffect(() => {
+    if (searchParams.get('action') === 'new') {
+      openCreateModal();
+    }
+  }, [searchParams, productos]);
+
+  const openCreateModal = () => {
+    setEditingVenta(null);
+    setFecha(new Date().toISOString().split('T')[0]);
+    setCliente('');
+    const defaultProd = productos.length > 0 ? productos[0] : null;
+    setProductoId(defaultProd ? defaultProd.id : '');
+    setPrecioPorKg(defaultProd ? defaultProd.precio_venta_por_kg.toString() : '8500');
+    setPesoKg('');
+    setMedioPago('Efectivo');
+    setEstado('Pendiente');
+    setNotas('');
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (v: Venta) => {
+    setEditingVenta(v);
+    setFecha(v.fecha);
+    setCliente(v.cliente);
+    setProductoId(v.producto_id);
+    setPrecioPorKg(v.precio_por_kg.toString());
+    setPesoKg(v.peso_kg !== null && v.peso_kg !== undefined ? v.peso_kg.toString() : '');
+    setMedioPago(v.medio_pago);
+    setEstado(v.estado);
+    setNotas(v.notas || '');
+    setIsModalOpen(true);
+  };
+
+  const handleProductoChange = (id: string) => {
+    setProductoId(id);
+    const prod = productos.find((p) => p.id === id);
+    if (prod) {
+      setPrecioPorKg(prod.precio_venta_por_kg.toString());
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!cliente || !productoId) return;
+    setSaving(true);
+    try {
+      const payload = {
+        id: editingVenta ? editingVenta.id : undefined,
+        fecha,
+        cliente,
+        producto_id: productoId,
+        peso_kg: pesoKg !== '' ? Number(pesoKg) : null,
+        precio_por_kg: Number(precioPorKg),
+        medio_pago: medioPago,
+        estado,
+        notas,
+      };
+
+      const method = editingVenta ? 'PUT' : 'POST';
+      const res = await fetch('/api/ventas', {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.ok) {
+        setIsModalOpen(false);
+        fetchVentasAndProductos();
+      }
+    } catch (e) {
+      console.error('Error saving venta:', e);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('¿Estás seguro de eliminar este registro de venta?')) return;
+    try {
+      const res = await fetch(`/api/ventas?id=${id}`, { method: 'DELETE' });
+      if (res.ok) fetchVentasAndProductos();
+    } catch (e) {
+      console.error('Error deleting venta:', e);
+    }
+  };
+
+  // Live preview calculation for modal
+  const livePeso = pesoKg !== '' ? Number(pesoKg) : null;
+  const livePrecioKg = Number(precioPorKg) || 0;
+  const livePrecioCalculado = livePeso ? livePeso * livePrecioKg : 0;
+  const liveTotalFinal = livePeso ? roundToCentena(livePrecioCalculado) : 0;
+  const liveBandejas = livePeso ? Math.max(1, Math.floor(livePeso)) : 1;
+
+  // Filtered List
+  const filteredVentas = ventas.filter((v) => {
+    const matchesEstado = filterEstado === 'Todos' || v.estado === filterEstado;
+    const matchesSearch =
+      v.cliente.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (v.producto_nombre && v.producto_nombre.toLowerCase().includes(searchQuery.toLowerCase()));
+    return matchesEstado && matchesSearch;
+  });
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-4 sm:space-y-6">
+      {/* Top Banner */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 sm:p-5 rounded-2xl border border-[#ebdcca] shadow-xs">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-extrabold text-[#881313] flex items-center gap-2">
+            <ShoppingBag className="w-6 h-6 text-[#aa1919]" />
+            Ventas y Reservas
+          </h1>
+          <p className="text-xs sm:text-sm text-gray-600 mt-0.5">
+            Bandejas calculadas automáticamente según la parte entera del peso ($8.774 ➔ $8.800).
+          </p>
+        </div>
+        <button
+          onClick={openCreateModal}
+          className="flex items-center justify-center gap-2 bg-[#aa1919] hover:bg-[#881313] text-white px-5 py-3 sm:py-2.5 rounded-xl font-bold text-sm shadow-md transition-all active:scale-95 w-full sm:w-auto"
+        >
+          <Plus className="w-5 h-5" />
+          Nueva Venta
+        </button>
+      </div>
+
+      {/* Filters and Search Bar */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-[#fbf5ea] p-3 rounded-2xl border border-[#eee0cb]">
+        {/* State Filter Pills */}
+        <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0 scrollbar-none">
+          {['Todos', 'Reservado', 'Pendiente', 'Entregado', 'Cancelado'].map((st) => (
+            <button
+              key={st}
+              onClick={() => setFilterEstado(st)}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                filterEstado === st
+                  ? 'bg-[#aa1919] text-white shadow-xs'
+                  : 'bg-white text-[#5c4033] hover:bg-[#f4e6ce]'
+              }`}
+            >
+              {st}
+            </button>
+          ))}
+        </div>
+
+        {/* Search Input */}
+        <div className="relative w-full sm:w-64">
+          <Search className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
+          <input
+            type="text"
+            placeholder="Buscar cliente o producto..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-xl text-xs font-medium focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
+          />
+        </div>
+      </div>
+
+      {/* Mobile Card List View (Phones) */}
+      <div className="block md:hidden space-y-3">
+        {loading ? (
+          <div className="text-center py-10 text-gray-500">Cargando ventas...</div>
+        ) : filteredVentas.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-[#ebdcca] p-8 text-center text-gray-500 text-sm">
+            No hay registros.
+          </div>
+        ) : (
+          filteredVentas.map((v) => {
+            const numBandejas = v.peso_kg !== null ? Math.max(1, Math.floor(v.peso_kg)) : 1;
+            return (
+              <div
+                key={v.id}
+                className="bg-white border border-[#ebdcca] rounded-2xl p-4 shadow-xs space-y-3"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-gray-500 flex items-center gap-1">
+                    <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                    {formatDate(v.fecha)}
+                  </span>
+                  <StatusBadge type="venta" estado={v.estado} />
+                </div>
+
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <h3 className="font-extrabold text-base text-[#2d1e15]">{v.cliente}</h3>
+                    <p className="text-xs text-gray-600 font-semibold">{v.producto_nombre}</p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-lg font-black text-emerald-800 block">
+                      {formatCurrency(v.total_final)}
+                    </span>
+                    <span className="text-[10px] text-gray-500">
+                      {v.medio_pago === 'Efectivo' ? '💵 Efectivo' : '💳 Transf.'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-2 border-t border-gray-100 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="bg-[#fbf5ea] text-[#aa1919] font-extrabold px-2.5 py-1 rounded-lg border border-[#ebdcca]">
+                      {numBandejas} {numBandejas === 1 ? 'bandeja' : 'bandejas'}
+                    </span>
+                    <span className="font-bold text-gray-700">
+                      {v.peso_kg !== null ? `${v.peso_kg.toFixed(3)} kg` : '⏳ Reserva sin peso'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => openEditModal(v)}
+                      className="p-2 text-amber-800 bg-amber-50 rounded-xl font-bold text-xs hover:bg-amber-100 flex items-center gap-1"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                      Editar
+                    </button>
+                    <button
+                      onClick={() => handleDelete(v.id)}
+                      className="p-2 text-gray-400 hover:text-red-700 rounded-xl"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Desktop Table View (Laptops/PC) */}
+      <div className="hidden md:block">
+        {loading ? (
+          <div className="text-center py-12 text-gray-500">Cargando ventas...</div>
+        ) : filteredVentas.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-[#ebdcca] p-8 text-center text-gray-500">
+            No hay ventas o reservas cargadas.
+          </div>
+        ) : (
+          <div className="bg-white border border-[#ebdcca] rounded-2xl shadow-xs overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-[#fbf5ea] border-b border-[#eee0cb] text-xs font-bold text-[#6b5040] uppercase tracking-wider">
+                  <tr>
+                    <th className="px-4 py-3.5">Estado</th>
+                    <th className="px-4 py-3.5">Fecha</th>
+                    <th className="px-4 py-3.5">Cliente</th>
+                    <th className="px-4 py-3.5">Producto</th>
+                    <th className="px-4 py-3.5">Peso (kg)</th>
+                    <th className="px-4 py-3.5">Bandejas</th>
+                    <th className="px-4 py-3.5">Precio / kg</th>
+                    <th className="px-4 py-3.5">Total Final</th>
+                    <th className="px-4 py-3.5">Pago</th>
+                    <th className="px-4 py-3.5 text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 font-medium">
+                  {filteredVentas.map((v) => {
+                    const bandejasCount = v.peso_kg !== null ? Math.max(1, Math.floor(v.peso_kg)) : 1;
+                    return (
+                      <tr key={v.id} className="hover:bg-[#fcf8f2] transition-colors">
+                        <td className="px-4 py-3.5">
+                          <StatusBadge type="venta" estado={v.estado} />
+                        </td>
+                        <td className="px-4 py-3.5 text-gray-700 font-semibold">{formatDate(v.fecha)}</td>
+                        <td className="px-4 py-3.5 font-bold text-[#2d1e15]">{v.cliente}</td>
+                        <td className="px-4 py-3.5 text-gray-800">{v.producto_nombre}</td>
+                        <td className="px-4 py-3.5">
+                          {v.peso_kg !== null ? (
+                            <span className="font-extrabold text-emerald-800">{v.peso_kg.toFixed(3)} kg</span>
+                          ) : (
+                            <span className="inline-block text-xs font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                              ⏳ Sin pesarse
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3.5">
+                          <span className="font-bold text-[#aa1919] bg-[#fbf5ea] px-2 py-0.5 rounded-md border border-[#ebdcca] text-xs">
+                            {bandejasCount} {bandejasCount === 1 ? 'bandeja' : 'bandejas'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3.5 text-gray-600">{formatCurrency(v.precio_por_kg)}</td>
+                        <td className="px-4 py-3.5">
+                          <span className="text-base font-extrabold text-gray-900">
+                            {formatCurrency(v.total_final)}
+                          </span>
+                          {v.precio_calculado !== v.total_final && v.precio_calculado > 0 && (
+                            <span className="block text-[10px] text-gray-400 line-through">
+                              ({formatCurrency(v.precio_calculado)})
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3.5 text-xs text-gray-700 font-semibold">
+                          {v.medio_pago === 'Efectivo' ? '💵 Efectivo' : '💳 Transf.'}
+                        </td>
+                        <td className="px-4 py-3.5 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => openEditModal(v)}
+                              className="p-1.5 text-gray-600 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors"
+                              title="Editar / Pesar bandeja"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(v.id)}
+                              className="p-1.5 text-gray-400 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Eliminar"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Floating Action Button (FAB) for Mobile Quick Add */}
+      <button
+        onClick={openCreateModal}
+        className="md:hidden fixed bottom-6 right-5 z-40 bg-[#aa1919] text-white p-4 rounded-full shadow-2xl active:scale-95 transition-transform flex items-center justify-center border-2 border-white"
+        aria-label="Nueva Venta"
+      >
+        <Plus className="w-7 h-7" />
+      </button>
+
+      {/* Modal Form */}
+      <Modal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={editingVenta ? 'Editar Venta / Reserva' : 'Nueva Venta / Reserva'}
+      >
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Fecha *</label>
+              <input
+                type="date"
+                required
+                value={fecha}
+                onChange={(e) => setFecha(e.target.value)}
+                className="w-full px-3.5 py-3 bg-white border border-gray-300 rounded-xl text-sm focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Cliente *</label>
+              <input
+                type="text"
+                required
+                placeholder="Nombre del cliente"
+                value={cliente}
+                onChange={(e) => setCliente(e.target.value)}
+                className="w-full px-3.5 py-3 bg-white border border-gray-300 rounded-xl text-sm font-bold focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Producto *</label>
+            <select
+              required
+              value={productoId}
+              onChange={(e) => handleProductoChange(e.target.value)}
+              className="w-full px-3.5 py-3 bg-white border border-gray-300 rounded-xl text-sm focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
+            >
+              {productos.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nombre} ({formatCurrency(p.precio_venta_por_kg)} / kg)
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                Peso Real (kg)
+              </label>
+              <input
+                type="number"
+                step="0.001"
+                inputMode="decimal"
+                placeholder="Ej: 1.084 o 2.263"
+                value={pesoKg}
+                onChange={(e) => setPesoKg(e.target.value)}
+                className="w-full px-3.5 py-3 bg-white border border-gray-300 rounded-xl text-sm font-extrabold focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
+              />
+              <span className="text-[10px] text-gray-500">
+                {livePeso ? `Cómputo: ${liveBandejas} ${liveBandejas === 1 ? 'bandeja' : 'bandejas'}` : 'Vacío = Reserva 1 bandeja'}
+              </span>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Precio / kg ($) *</label>
+              <input
+                type="number"
+                step="0.01"
+                inputMode="decimal"
+                required
+                value={precioPorKg}
+                onChange={(e) => setPrecioPorKg(e.target.value)}
+                className="w-full px-3.5 py-3 bg-white border border-gray-300 rounded-xl text-sm focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
+              />
+            </div>
+          </div>
+
+          {/* Realtime Live Price Preview */}
+          <div className="bg-[#fbf5ea] border border-[#eee0cb] p-3.5 rounded-xl space-y-1.5">
+            <div className="flex justify-between text-xs text-gray-600">
+              <span>Bandejas que representa:</span>
+              <span className="font-bold text-[#aa1919]">{liveBandejas} {liveBandejas === 1 ? 'bandeja' : 'bandejas'}</span>
+            </div>
+            <div className="flex justify-between text-xs text-gray-600">
+              <span>Precio exacto calculado:</span>
+              <span className="font-semibold">{formatCurrency(livePrecioCalculado)}</span>
+            </div>
+            <div className="flex justify-between items-center border-t border-[#ebdcca] pt-1">
+              <span className="text-xs font-extrabold text-[#aa1919] uppercase">
+                Total Final Redondeado:
+              </span>
+              <span className="text-lg font-black text-emerald-800">
+                {formatCurrency(liveTotalFinal)}
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Medio de Pago *</label>
+              <select
+                value={medioPago}
+                onChange={(e) => setMedioPago(e.target.value as MedioPago)}
+                className="w-full px-3.5 py-3 bg-white border border-gray-300 rounded-xl text-sm focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
+              >
+                <option value="Efectivo">💵 Efectivo</option>
+                <option value="Transferencia">💳 Transferencia</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Estado de la Venta *</label>
+              <select
+                value={estado}
+                onChange={(e) => setEstado(e.target.value as EstadoVenta)}
+                className="w-full px-3.5 py-3 bg-white border border-gray-300 rounded-xl text-sm font-bold focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
+              >
+                <option value="Reservado">📌 Reservado</option>
+                <option value="Pendiente">⏳ Pendiente</option>
+                <option value="Entregado">✓ Entregado</option>
+                <option value="Cancelado">✕ Cancelado</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Notas / Recordatorios</label>
+            <input
+              type="text"
+              placeholder="ej. Retira a las 18hs"
+              value={notas}
+              onChange={(e) => setNotas(e.target.value)}
+              className="w-full px-3.5 py-3 bg-white border border-gray-300 rounded-xl text-sm focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-3">
+            <button
+              type="button"
+              onClick={() => setIsModalOpen(false)}
+              className="px-4 py-2.5 text-xs font-bold text-gray-600 hover:bg-gray-100 rounded-xl"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-5 py-3 bg-[#aa1919] hover:bg-[#881313] text-white text-xs font-bold rounded-xl shadow-md transition-all active:scale-95 disabled:opacity-50"
+            >
+              {saving ? 'Guardando...' : editingVenta ? 'Actualizar Venta' : 'Guardar Venta'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+    </div>
+  );
+}
+
+export default function VentasPage() {
+  return (
+    <Suspense fallback={<div className="text-center py-12 text-gray-500">Cargando ventas...</div>}>
+      <VentasContent />
+    </Suspense>
+  );
+}
