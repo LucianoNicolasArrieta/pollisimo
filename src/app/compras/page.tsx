@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Compra, InsumoStock } from '@/lib/types';
-import { formatCurrency, formatDate } from '@/lib/utils';
+import { formatCurrency, formatDate, getTodayLocalDateString, parseDecimal } from '@/lib/utils';
 import { Modal } from '@/components/Modal';
 import { Receipt, Plus, Trash2, Check, X } from 'lucide-react';
 
@@ -13,7 +13,7 @@ export default function ComprasPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Form State
-  const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
+  const [fecha, setFecha] = useState(getTodayLocalDateString());
   const [insumoId, setInsumoId] = useState('');
   const [cantidad, setCantidad] = useState('');
   const [costoUnitario, setCostoUnitario] = useState('');
@@ -44,7 +44,7 @@ export default function ComprasPage() {
   }, []);
 
   const openModal = () => {
-    setFecha(new Date().toISOString().split('T')[0]);
+    setFecha(getTodayLocalDateString());
     setInsumoId(insumos.length > 0 ? insumos[0].id : '');
     setCantidad('');
     setCostoUnitario(insumos.length > 0 ? insumos[0].costo_unitario.toString() : '');

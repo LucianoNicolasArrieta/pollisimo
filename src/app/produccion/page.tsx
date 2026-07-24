@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Produccion, ResumenProduccion, Producto, InsumoStock } from '@/lib/types';
-import { formatCurrency, formatDate, parseDecimal } from '@/lib/utils';
+import { formatCurrency, formatDate, parseDecimal, getTodayLocalDateString } from '@/lib/utils';
 import { Modal } from '@/components/Modal';
 import { Factory, Plus, Trash2, Check, X, Layers, Scale, DollarSign, SlidersHorizontal, Beef } from 'lucide-react';
 
@@ -23,7 +23,7 @@ export default function ProduccionPage() {
   const [savingAdjust, setSavingAdjust] = useState(false);
 
   // Form state
-  const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
+  const [fecha, setFecha] = useState(getTodayLocalDateString());
   const [productoId, setProductoId] = useState('');
   const [bandejasObtenidas, setBandejasObtenidas] = useState('');
   const [kilosTotales, setKilosTotales] = useState('');
@@ -67,7 +67,7 @@ export default function ProduccionPage() {
   }, []);
 
   const openModal = () => {
-    setFecha(new Date().toISOString().split('T')[0]);
+    setFecha(getTodayLocalDateString());
     setProductoId(productos.length > 0 ? productos[0].id : '');
     setBandejasObtenidas('');
     setKilosTotales('');

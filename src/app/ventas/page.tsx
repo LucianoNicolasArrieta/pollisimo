@@ -3,7 +3,7 @@
 import React, { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Venta, Producto, EstadoVenta, MedioPago, ClienteConStats } from '@/lib/types';
-import { formatCurrency, formatDate, roundToCentena, parseDecimal, parseDecimalOrNull } from '@/lib/utils';
+import { formatCurrency, formatDate, roundToCentena, parseDecimal, parseDecimalOrNull, getTodayLocalDateString } from '@/lib/utils';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Modal } from '@/components/Modal';
 import { ShoppingBag, Plus, Edit2, Trash2, Search, Calendar, User, Zap, Scale, CheckCircle2 } from 'lucide-react';
@@ -22,7 +22,7 @@ function VentasContent() {
   const [isCargaRapida, setIsCargaRapida] = useState(false);
 
   // Form state
-  const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
+  const [fecha, setFecha] = useState(getTodayLocalDateString());
   const [clienteInput, setClienteInput] = useState('');
   const [clienteId, setClienteId] = useState('');
   const [showClientSuggestions, setShowClientSuggestions] = useState(false);
@@ -81,7 +81,7 @@ function VentasContent() {
   const openCreateModal = (quickMode = false) => {
     setEditingVenta(null);
     setIsCargaRapida(quickMode);
-    setFecha(new Date().toISOString().split('T')[0]);
+    setFecha(getTodayLocalDateString());
     setClienteInput('');
     setClienteId('');
     setShowClientSuggestions(false);
@@ -428,16 +428,16 @@ function VentasContent() {
               <table className="w-full text-left text-sm">
                 <thead className="bg-[#fbf5ea] border-b border-[#eee0cb] text-xs font-bold text-[#6b5040] uppercase tracking-wider">
                   <tr>
-                    <th className="px-4 py-3.5">Estado</th>
-                    <th className="px-4 py-3.5">Fecha</th>
-                    <th className="px-4 py-3.5">Cliente</th>
-                    <th className="px-4 py-3.5">Producto</th>
-                    <th className="px-4 py-3.5">Peso (kg)</th>
-                    <th className="px-4 py-3.5">Bandejas</th>
-                    <th className="px-4 py-3.5">Precio / kg</th>
-                    <th className="px-4 py-3.5">Total Final</th>
-                    <th className="px-4 py-3.5">Medio Pago</th>
-                    <th className="px-4 py-3.5 text-right">Acciones</th>
+                    <th className="px-4 py-3.5 whitespace-nowrap">Estado</th>
+                    <th className="px-4 py-3.5 whitespace-nowrap">Fecha</th>
+                    <th className="px-4 py-3.5 whitespace-nowrap">Cliente</th>
+                    <th className="px-4 py-3.5 whitespace-nowrap">Producto</th>
+                    <th className="px-4 py-3.5 whitespace-nowrap">Peso (kg)</th>
+                    <th className="px-4 py-3.5 whitespace-nowrap">Bandejas</th>
+                    <th className="px-4 py-3.5 whitespace-nowrap">Precio / kg</th>
+                    <th className="px-4 py-3.5 whitespace-nowrap">Total Final</th>
+                    <th className="px-4 py-3.5 whitespace-nowrap">Medio Pago</th>
+                    <th className="px-4 py-3.5 text-right whitespace-nowrap">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 font-medium">
@@ -446,33 +446,33 @@ function VentasContent() {
                     const isPendingOrReserved = v.estado === 'Pendiente' || v.estado === 'Reservado';
                     return (
                       <tr key={v.id} className="hover:bg-[#fcf8f2] transition-colors">
-                        <td className="px-4 py-3.5">
+                        <td className="px-4 py-3.5 whitespace-nowrap">
                           <StatusBadge type="venta" estado={v.estado} />
                         </td>
-                        <td className="px-4 py-3.5 text-gray-700 font-semibold">{formatDate(v.fecha)}</td>
-                        <td className="px-4 py-3.5 font-bold text-[#2d1e15]">{v.cliente}</td>
-                        <td className="px-4 py-3.5 text-gray-800">{v.producto_nombre}</td>
-                        <td className="px-4 py-3.5">
+                        <td className="px-4 py-3.5 text-gray-700 font-semibold whitespace-nowrap">{formatDate(v.fecha)}</td>
+                        <td className="px-4 py-3.5 font-bold text-[#2d1e15] whitespace-nowrap">{v.cliente}</td>
+                        <td className="px-4 py-3.5 text-gray-800 whitespace-nowrap">{v.producto_nombre}</td>
+                        <td className="px-4 py-3.5 whitespace-nowrap">
                           {v.peso_kg !== null ? (
-                            <span className="font-extrabold text-emerald-800">{v.peso_kg.toString().replace('.', ',')} kg</span>
+                            <span className="font-extrabold text-emerald-800 whitespace-nowrap">{v.peso_kg.toString().replace('.', ',')} kg</span>
                           ) : (
-                            <span className="inline-block text-xs font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                            <span className="inline-block text-xs font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 whitespace-nowrap">
                               ⏳ Sin pesarse
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-3.5">
-                          <span className="font-bold text-[#aa1919] bg-[#fbf5ea] px-2 py-0.5 rounded-md border border-[#ebdcca] text-xs">
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          <span className="font-bold text-[#aa1919] bg-[#fbf5ea] px-2 py-0.5 rounded-md border border-[#ebdcca] text-xs whitespace-nowrap inline-block">
                             {bandejasCount} {bandejasCount === 1 ? 'bandeja' : 'bandejas'}
                           </span>
                         </td>
-                        <td className="px-4 py-3.5 text-gray-600">{formatCurrency(v.precio_por_kg)}</td>
-                        <td className="px-4 py-3.5">
-                          <span className="text-base font-extrabold text-gray-900">
+                        <td className="px-4 py-3.5 text-gray-600 whitespace-nowrap">{formatCurrency(v.precio_por_kg)}</td>
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          <span className="text-base font-extrabold text-gray-900 whitespace-nowrap">
                             {formatCurrency(v.total_final)}
                           </span>
                         </td>
-                        <td className="px-4 py-3.5 text-xs text-gray-700 font-semibold">
+                        <td className="px-4 py-3.5 text-xs text-gray-700 font-semibold whitespace-nowrap">
                           {v.medio_pago === 'Efectivo' && '💵 Efectivo'}
                           {v.medio_pago === 'Transferencia' && '💳 Transf.'}
                           {v.medio_pago === 'Mixto' && (

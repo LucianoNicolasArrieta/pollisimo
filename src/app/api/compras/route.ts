@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { Compra } from '@/lib/types';
+import { getTodayLocalDateString } from '@/lib/utils';
 import { randomUUID } from 'crypto';
 
 export async function GET() {
@@ -29,7 +30,7 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const {
-      fecha = new Date().toISOString().split('T')[0],
+      fecha = getTodayLocalDateString(),
       insumo_id,
       cantidad,
       costo_unitario,
