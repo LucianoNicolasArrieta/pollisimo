@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Produccion, ResumenProduccion, Producto, InsumoStock } from '@/lib/types';
-import { formatCurrency, formatDate } from '@/lib/utils';
+import { formatCurrency, formatDate, parseDecimal } from '@/lib/utils';
 import { Modal } from '@/components/Modal';
 import { Factory, Plus, Trash2, Check, X, Layers, Scale, DollarSign, SlidersHorizontal, Beef } from 'lucide-react';
 
@@ -84,11 +84,11 @@ export default function ProduccionPage() {
     setIsModalOpen(true);
   };
 
-  const openAdjustModal = (pId: string, pNombre: string, bandejasLibres: number, kilosLibres: number) => {
-    setAdjustProductoId(pId);
-    setAdjustProductoNombre(pNombre);
-    setStockActualBandejas(bandejasLibres.toString());
-    setStockActualKilos(kilosLibres.toString());
+  const openAdjustModal = (r: ResumenProduccion) => {
+    setAdjustProductoId(r.producto_id);
+    setAdjustProductoNombre(r.producto_nombre);
+    setStockActualBandejas((r.bandejas_disponibles || 0).toString());
+    setStockActualKilos((r.kilos_disponibles || 0).toString().replace('.', ','));
     setIsAdjustModalOpen(true);
   };
 
@@ -100,8 +100,8 @@ export default function ProduccionPage() {
       const payload = {
         id: adjustProductoId,
         ajustar_stock_actual: true,
-        stock_actual_bandejas: Number(stockActualBandejas) || 0,
-        stock_actual_kilos: Number(stockActualKilos) || 0,
+        stock_actual_bandejas: parseDecimal(stockActualBandejas),
+        stock_actual_kilos: parseDecimal(stockActualKilos),
       };
 
       const res = await fetch('/api/productos', {
@@ -129,7 +129,7 @@ export default function ProduccionPage() {
   const calculateCostoEstimadoInsumos = () => {
     let total = 0;
     Object.entries(insumosUsados).forEach(([id, qtyStr]) => {
-      const qty = Number(qtyStr) || 0;
+      const qty = parseDecimal(qtyStr);
       if (qty > 0) {
         const ins = insumos.find((item) => item.id === id);
         if (ins) {
@@ -147,21 +147,22 @@ export default function ProduccionPage() {
 
     try {
       const insumosArray = Object.entries(insumosUsados)
-        .filter(([_, qtyStr]) => Number(qtyStr) > 0)
+        .filter(([_, qtyStr]) => parseDecimal(qtyStr) > 0)
         .map(([insumo_id, qtyStr]) => ({
           insumo_id,
-          cantidad_usada: Number(qtyStr),
+          cantidad_usada: parseDecimal(qtyStr),
         }));
 
-      const costoPorKg = Number(kilosTotales) > 0 ? totalCostoPreview / Number(kilosTotales) : 0;
+      const numKilos = parseDecimal(kilosTotales);
+      const costoPorKg = numKilos > 0 ? totalCostoPreview / numKilos : 0;
       const marginPct = Number(targetMargin) || 35;
       const suggestedPriceKg = costoPorKg > 0 ? Math.round((costoPorKg / (1 - marginPct / 100)) / 50) * 50 : 0;
 
       const payload = {
         fecha,
         producto_id: productoId,
-        bandejas_obtenidas: Number(bandejasObtenidas),
-        kilos_totales: Number(kilosTotales),
+        bandejas_obtenidas: parseDecimal(bandejasObtenidas),
+        kilos_totales: numKilos,
         afecta_stock: afectaStock,
         notas,
         insumos_usados: insumosArray,
@@ -268,7 +269,7 @@ export default function ProduccionPage() {
               </div>
 
               <button
-                onClick={() => openAdjustModal(r.producto_id, r.producto_nombre, r.bandejas_disponibles, r.kilos_disponibles)}
+                onClick={() => openAdjustModal(r)}
                 className="w-full flex items-center justify-center gap-1.5 bg-[#faf5ea] hover:bg-[#f3e6d0] border border-[#ebdcca] text-[#881313] py-2 rounded-xl font-bold text-xs shadow-xs transition-colors active:scale-95"
               >
                 <SlidersHorizontal className="w-3.5 h-3.5 text-[#aa1919]" />

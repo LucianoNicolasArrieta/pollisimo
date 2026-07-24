@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { InsumoStock, Producto } from '@/lib/types';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, parseDecimal } from '@/lib/utils';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Modal } from '@/components/Modal';
 import { Boxes, Plus, Edit2, Trash2, Beef, SlidersHorizontal, Scale, CheckCircle2, Factory } from 'lucide-react';
@@ -20,7 +20,7 @@ export default function StockPage() {
   const [nombreInsumo, setNombreInsumo] = useState('');
   const [unidadInsumo, setUnidadInsumo] = useState('kg');
   const [stockInicialInsumo, setStockInicialInsumo] = useState('0');
-  const [stockMinimoInsumo, setStockMinimoInsumo] = useState('0');
+  const [stockMinimoInsumo, setStockMinimoInsumo] = useState('5');
   const [costoUnitarioInsumo, setCostoUnitarioInsumo] = useState('0');
   const [savingInsumo, setSavingInsumo] = useState(false);
 
@@ -100,9 +100,9 @@ export default function StockPage() {
         id: editingInsumoId,
         nombre: nombreInsumo,
         unidad: unidadInsumo,
-        stock_inicial: Number(stockInicialInsumo) || 0,
-        stock_minimo: Number(stockMinimoInsumo) || 0,
-        costo_unitario: Number(costoUnitarioInsumo) || 0,
+        stock_inicial: parseDecimal(stockInicialInsumo),
+        stock_minimo: parseDecimal(stockMinimoInsumo),
+        costo_unitario: parseDecimal(costoUnitarioInsumo),
       };
 
       const method = editingInsumoId ? 'PUT' : 'POST';
@@ -137,7 +137,7 @@ export default function StockPage() {
   const openAdjustMilanesaModal = (prod: Producto) => {
     setSelectedProducto(prod);
     setStockActualBandejas((prod.bandejas_disponibles || 0).toString());
-    setStockActualKilos((prod.kilos_disponibles || 0).toString());
+    setStockActualKilos((prod.kilos_disponibles || 0).toString().replace('.', ','));
     setIsStockMilanesaModalOpen(true);
   };
 
@@ -150,8 +150,8 @@ export default function StockPage() {
       const payload = {
         id: selectedProducto.id,
         ajustar_stock_actual: true,
-        stock_actual_bandejas: Number(stockActualBandejas) || 0,
-        stock_actual_kilos: Number(stockActualKilos) || 0,
+        stock_actual_bandejas: parseDecimal(stockActualBandejas),
+        stock_actual_kilos: parseDecimal(stockActualKilos),
       };
 
       const res = await fetch('/api/productos', {

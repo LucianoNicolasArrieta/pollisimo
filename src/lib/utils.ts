@@ -29,3 +29,19 @@ export function roundToCentena(precio: number): number {
   if (!precio || isNaN(precio)) return 0;
   return Math.round(precio / 100) * 100;
 }
+
+export function parseDecimal(val: string | number | null | undefined): number {
+  if (val === null || val === undefined || val === '') return 0;
+  if (typeof val === 'number') return isNaN(val) ? 0 : val;
+  const normalized = val.toString().replace(',', '.').trim();
+  const num = parseFloat(normalized);
+  return isNaN(num) ? 0 : num;
+}
+
+export function parseDecimalOrNull(val: string | number | null | undefined): number | null {
+  if (val === null || val === undefined || val === '') return null;
+  if (typeof val === 'number') return isNaN(val) ? null : val;
+  const normalized = val.toString().replace(',', '.').trim();
+  const num = parseFloat(normalized);
+  return isNaN(num) ? null : num;
+}

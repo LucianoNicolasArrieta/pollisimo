@@ -3,7 +3,7 @@
 import React, { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Venta, Producto, EstadoVenta, MedioPago, ClienteConStats } from '@/lib/types';
-import { formatCurrency, formatDate, roundToCentena } from '@/lib/utils';
+import { formatCurrency, formatDate, roundToCentena, parseDecimal, parseDecimalOrNull } from '@/lib/utils';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Modal } from '@/components/Modal';
 import { ShoppingBag, Plus, Edit2, Trash2, Search, Calendar, User, Zap, Scale, CheckCircle2 } from 'lucide-react';
@@ -28,8 +28,11 @@ function VentasContent() {
   const [showClientSuggestions, setShowClientSuggestions] = useState(false);
 
   const [productoId, setProductoId] = useState('');
-  const [pesoKg, setPesoKg] = useState('');
   const [precioPorKg, setPrecioPorKg] = useState('');
+  const [pesoKg, setPesoKg] = useState('');
+  const [montoTotalInput, setMontoTotalInput] = useState('');
+  const [lastEdited, setLastEdited] = useState<'peso' | 'total' | null>(null);
+
   const [medioPago, setMedioPago] = useState<MedioPago>('Efectivo');
   const [montoEfectivo, setMontoEfectivo] = useState('');
   const [montoTransferencia, setMontoTransferencia] = useState('');
@@ -84,9 +87,14 @@ function VentasContent() {
     setShowClientSuggestions(false);
 
     const defaultProd = productos.length > 0 ? productos[0] : null;
+    const defaultPrecioStr = defaultProd ? defaultProd.precio_venta_por_kg.toString() : '9500';
     setProductoId(defaultProd ? defaultProd.id : '');
-    setPrecioPorKg(defaultProd ? defaultProd.precio_venta_por_kg.toString() : '9500');
+    setPrecioPorKg(defaultPrecioStr);
+
     setPesoKg('');
+    setMontoTotalInput('');
+    setLastEdited(null);
+
     setMedioPago('Efectivo');
     setMontoEfectivo('');
     setMontoTransferencia('');
@@ -104,8 +112,15 @@ function VentasContent() {
     setShowClientSuggestions(false);
 
     setProductoId(v.producto_id);
-    setPrecioPorKg(v.precio_por_kg.toString());
-    setPesoKg(v.peso_kg !== null && v.peso_kg !== undefined ? v.peso_kg.toString() : '');
+    const prStr = v.precio_por_kg.toString();
+    setPrecioPorKg(prStr);
+
+    const pVal = v.peso_kg !== null && v.peso_kg !== undefined ? v.peso_kg.toString().replace('.', ',') : '';
+    const tVal = v.total_final ? v.total_final.toString() : '';
+    setPesoKg(pVal);
+    setMontoTotalInput(tVal);
+    setLastEdited(v.peso_kg !== null ? 'peso' : (v.total_final ? 'total' : null));
+
     setMedioPago(v.medio_pago);
     setMontoEfectivo(v.monto_efectivo ? v.monto_efectivo.toString() : '');
     setMontoTransferencia(v.monto_transferencia ? v.monto_transferencia.toString() : '');
@@ -118,7 +133,55 @@ function VentasContent() {
     setProductoId(id);
     const prod = productos.find((p) => p.id === id);
     if (prod) {
-      setPrecioPorKg(prod.precio_venta_por_kg.toString());
+      const newPrStr = prod.precio_venta_por_kg.toString();
+      setPrecioPorKg(newPrStr);
+      recalculateBidirectional(pesoKg, montoTotalInput, newPrStr, lastEdited);
+    }
+  };
+
+  const handlePesoChange = (val: string) => {
+    setPesoKg(val);
+    setLastEdited('peso');
+    const pNum = parseDecimal(val);
+    const prNum = parseDecimal(precioPorKg);
+    if (pNum > 0 && prNum > 0) {
+      const calcTotal = roundToCentena(pNum * prNum);
+      setMontoTotalInput(calcTotal > 0 ? calcTotal.toString() : '');
+    } else if (!val) {
+      setMontoTotalInput('');
+    }
+  };
+
+  const handleMontoTotalChange = (val: string) => {
+    setMontoTotalInput(val);
+    setLastEdited('total');
+    const tNum = parseDecimal(val);
+    const prNum = parseDecimal(precioPorKg);
+    if (tNum > 0 && prNum > 0) {
+      const calcKg = (tNum / prNum).toFixed(3).replace('.', ',');
+      setPesoKg(calcKg);
+    } else if (!val) {
+      setPesoKg('');
+    }
+  };
+
+  const handlePrecioKgChange = (val: string) => {
+    setPrecioPorKg(val);
+    recalculateBidirectional(pesoKg, montoTotalInput, val, lastEdited);
+  };
+
+  const recalculateBidirectional = (currPeso: string, currTotal: string, currPrecioKg: string, mode: 'peso' | 'total' | null) => {
+    const prNum = parseDecimal(currPrecioKg);
+    if (mode === 'peso') {
+      const pNum = parseDecimal(currPeso);
+      if (pNum > 0 && prNum > 0) {
+        setMontoTotalInput(roundToCentena(pNum * prNum).toString());
+      }
+    } else if (mode === 'total') {
+      const tNum = parseDecimal(currTotal);
+      if (tNum > 0 && prNum > 0) {
+        setPesoKg((tNum / prNum).toFixed(3).replace('.', ','));
+      }
     }
   };
 
@@ -134,18 +197,16 @@ function VentasContent() {
   };
 
   // Live preview calculation for modal
-  const livePeso = pesoKg !== '' ? Number(pesoKg) : null;
-  const livePrecioKg = Number(precioPorKg) || 0;
-  const livePrecioCalculado = livePeso ? livePeso * livePrecioKg : 0;
-  const liveTotalFinal = livePeso ? roundToCentena(livePrecioCalculado) : 0;
-  const liveBandejas = livePeso ? Math.max(1, Math.floor(livePeso)) : 1;
+  const livePesoNum = parseDecimalOrNull(pesoKg);
+  const liveTotalFinal = parseDecimal(montoTotalInput);
+  const liveBandejas = livePesoNum ? Math.max(1, Math.floor(livePesoNum)) : 1;
 
   const handleEfectivoChange = (val: string) => {
     setMontoEfectivo(val);
-    if (val !== '' && !isNaN(Number(val)) && liveTotalFinal > 0) {
-      const ef = Number(val);
+    if (val !== '' && liveTotalFinal > 0) {
+      const ef = parseDecimal(val);
       const tr = Math.max(0, liveTotalFinal - ef);
-      setMontoTransferencia(tr.toString());
+      setMontoTransferencia(tr > 0 ? tr.toString() : '');
     }
   };
 
@@ -155,8 +216,8 @@ function VentasContent() {
     setSaving(true);
 
     try {
-      const efVal = medioPago === 'Mixto' ? Number(montoEfectivo) || 0 : (medioPago === 'Efectivo' ? liveTotalFinal : 0);
-      const trVal = medioPago === 'Mixto' ? Number(montoTransferencia) || 0 : (medioPago === 'Transferencia' ? liveTotalFinal : 0);
+      const efVal = medioPago === 'Mixto' ? parseDecimal(montoEfectivo) : (medioPago === 'Efectivo' ? liveTotalFinal : 0);
+      const trVal = medioPago === 'Mixto' ? parseDecimal(montoTransferencia) : (medioPago === 'Transferencia' ? liveTotalFinal : 0);
 
       const payload = {
         id: editingVenta ? editingVenta.id : undefined,
@@ -164,8 +225,9 @@ function VentasContent() {
         cliente: clienteInput,
         cliente_id: clienteId || undefined,
         producto_id: productoId,
-        peso_kg: isCargaRapida ? null : (pesoKg !== '' ? Number(pesoKg) : null),
-        precio_por_kg: Number(precioPorKg),
+        peso_kg: parseDecimalOrNull(pesoKg),
+        precio_por_kg: parseDecimal(precioPorKg),
+        total_final: liveTotalFinal,
         medio_pago: medioPago,
         monto_efectivo: efVal,
         monto_transferencia: trVal,
@@ -220,7 +282,7 @@ function VentasContent() {
             Ventas y Reservas
           </h1>
           <p className="text-xs sm:text-sm text-gray-600 mt-0.5">
-            Carga rápida de pedidos y control de clientes normalizados.
+            Carga rápida de pedidos con cálculo automático de peso o precio.
           </p>
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -318,7 +380,7 @@ function VentasContent() {
                       {numBandejas} {numBandejas === 1 ? 'bandeja' : 'bandejas'}
                     </span>
                     <span className="font-bold text-gray-700">
-                      {v.peso_kg !== null ? `${v.peso_kg.toFixed(3)} kg` : '⏳ Reserva sin peso'}
+                      {v.peso_kg !== null ? `${v.peso_kg.toString().replace('.', ',')} kg` : '⏳ Reserva sin peso'}
                     </span>
                   </div>
 
@@ -392,7 +454,7 @@ function VentasContent() {
                         <td className="px-4 py-3.5 text-gray-800">{v.producto_nombre}</td>
                         <td className="px-4 py-3.5">
                           {v.peso_kg !== null ? (
-                            <span className="font-extrabold text-emerald-800">{v.peso_kg.toFixed(3)} kg</span>
+                            <span className="font-extrabold text-emerald-800">{v.peso_kg.toString().replace('.', ',')} kg</span>
                           ) : (
                             <span className="inline-block text-xs font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
                               ⏳ Sin pesarse
@@ -492,7 +554,7 @@ function VentasContent() {
                 }`}
               >
                 <Zap className="w-3.5 h-3.5 fill-current" />
-                ⚡ Carga Rápida (Solo Cliente y Producto)
+                ⚡ Carga Rápida
               </button>
               <button
                 type="button"
@@ -504,7 +566,7 @@ function VentasContent() {
                   !isCargaRapida ? 'bg-[#aa1919] text-white shadow-xs' : 'text-gray-600 hover:text-[#aa1919]'
                 }`}
               >
-                📋 Carga Completa (Con Peso y Pago)
+                📋 Carga Completa (Con Peso/Pago)
               </button>
             </div>
           )}
@@ -582,118 +644,126 @@ function VentasContent() {
             </select>
           </div>
 
-          {/* If NOT Carga Rápida, show full weight & payment details */}
+          {/* BIDIRECTIONAL PESO AND MONTO TOTAL INPUTS */}
+          <div className="bg-[#fbf5ea] border border-[#eee0cb] p-3.5 rounded-xl space-y-3">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-extrabold text-[#881313] uppercase flex items-center gap-1">
+                <Scale className="w-4 h-4 text-[#aa1919]" />
+                Cálculo Automático (Peso ⟷ Precio):
+              </span>
+              <span className="text-[10px] text-gray-500">Precio/kg: ${precioPorKg}</span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                  Peso Real / Est. (kg)
+                </label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="Ej: 1,084"
+                  value={pesoKg}
+                  onChange={(e) => handlePesoChange(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-xl text-sm font-extrabold focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
+                />
+                <span className="text-[10px] text-gray-500 block mt-0.5">
+                  {livePesoNum ? `Representa: ${liveBandejas} ${liveBandejas === 1 ? 'bandeja' : 'bandejas'}` : 'Vacío = Reserva s/peso'}
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                  Monto Total ($)
+                </label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="Ej: 10000"
+                  value={montoTotalInput}
+                  onChange={(e) => handleMontoTotalChange(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-xl text-sm font-black text-emerald-800 focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
+                />
+                <span className="text-[10px] text-gray-500 block mt-0.5">
+                  {liveTotalFinal > 0 ? `Redondeado: ${formatCurrency(liveTotalFinal)}` : 'Calcula peso automáticamente'}
+                </span>
+              </div>
+            </div>
+
+            <div className="pt-1 border-t border-[#ebdcca] flex items-center justify-between text-[11px] text-gray-600">
+              <span>Precio por kilo base:</span>
+              <div className="w-32">
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={precioPorKg}
+                  onChange={(e) => handlePrecioKgChange(e.target.value)}
+                  className="w-full px-2 py-1 bg-white border border-gray-300 rounded-md text-xs font-bold text-gray-800 text-right"
+                />
+              </div>
+            </div>
+          </div>
+
           {!isCargaRapida && (
-            <>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Medio de Pago *</label>
+                <select
+                  value={medioPago}
+                  onChange={(e) => setMedioPago(e.target.value as MedioPago)}
+                  className="w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-xl text-sm font-bold focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
+                >
+                  <option value="Efectivo">💵 Efectivo</option>
+                  <option value="Transferencia">💳 Transferencia</option>
+                  <option value="Mixto">🔀 Mixto (Efectivo + Transferencia)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Estado de la Venta *</label>
+                <select
+                  value={estado}
+                  onChange={(e) => setEstado(e.target.value as EstadoVenta)}
+                  className="w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-xl text-sm font-bold focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
+                >
+                  <option value="Reservado">📌 Reservado</option>
+                  <option value="Pendiente">⏳ Pendiente</option>
+                  <option value="Entregado">✓ Entregado</option>
+                  <option value="Cancelado">✕ Cancelado</option>
+                </select>
+              </div>
+            </div>
+          )}
+
+          {/* Conditional Mixed Payment Fields */}
+          {!isCargaRapida && medioPago === 'Mixto' && (
+            <div className="bg-purple-50 border border-purple-200 p-3 rounded-xl space-y-2">
+              <p className="text-xs font-bold text-purple-900">Desglose de Pago Combinado:</p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
-                    Peso Real (kg)
-                  </label>
+                  <label className="block text-[11px] font-bold text-purple-800 uppercase mb-1">Monto Efectivo ($)</label>
                   <input
-                    type="number"
-                    step="0.001"
+                    type="text"
                     inputMode="decimal"
-                    placeholder="Ej: 1.084 o 2.263"
-                    value={pesoKg}
-                    onChange={(e) => setPesoKg(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-xl text-sm font-extrabold focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
+                    placeholder="Ej: 5000"
+                    value={montoEfectivo}
+                    onChange={(e) => handleEfectivoChange(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-purple-300 rounded-xl text-sm font-bold focus:outline-hidden focus:ring-2 focus:ring-purple-600"
                   />
-                  <span className="text-[10px] text-gray-500">
-                    {livePeso ? `Cómputo: ${liveBandejas} ${liveBandejas === 1 ? 'bandeja' : 'bandejas'}` : 'Vacío = Reserva 1 bandeja'}
-                  </span>
                 </div>
-
                 <div>
-                  <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Precio / kg ($) *</label>
+                  <label className="block text-[11px] font-bold text-purple-800 uppercase mb-1">Monto Transferencia ($)</label>
                   <input
-                    type="number"
-                    step="0.01"
+                    type="text"
                     inputMode="decimal"
-                    required
-                    value={precioPorKg}
-                    onChange={(e) => setPrecioPorKg(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-xl text-sm focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
+                    placeholder="Ej: 5000"
+                    value={montoTransferencia}
+                    onChange={(e) => setMontoTransferencia(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-purple-300 rounded-xl text-sm font-bold focus:outline-hidden focus:ring-2 focus:ring-purple-600"
                   />
                 </div>
               </div>
-
-              {/* Realtime Live Price Preview */}
-              <div className="bg-[#fbf5ea] border border-[#eee0cb] p-3 rounded-xl space-y-1">
-                <div className="flex justify-between text-xs text-gray-600">
-                  <span>Bandejas que representa:</span>
-                  <span className="font-bold text-[#aa1919]">{liveBandejas} {liveBandejas === 1 ? 'bandeja' : 'bandejas'}</span>
-                </div>
-                <div className="flex justify-between items-center border-t border-[#ebdcca] pt-1">
-                  <span className="text-xs font-extrabold text-[#aa1919] uppercase">
-                    Total Final Redondeado:
-                  </span>
-                  <span className="text-lg font-black text-emerald-800">
-                    {formatCurrency(liveTotalFinal)}
-                  </span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Medio de Pago *</label>
-                  <select
-                    value={medioPago}
-                    onChange={(e) => setMedioPago(e.target.value as MedioPago)}
-                    className="w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-xl text-sm font-bold focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
-                  >
-                    <option value="Efectivo">💵 Efectivo</option>
-                    <option value="Transferencia">💳 Transferencia</option>
-                    <option value="Mixto">🔀 Mixto (Efectivo + Transferencia)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Estado de la Venta *</label>
-                  <select
-                    value={estado}
-                    onChange={(e) => setEstado(e.target.value as EstadoVenta)}
-                    className="w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-xl text-sm font-bold focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
-                  >
-                    <option value="Reservado">📌 Reservado</option>
-                    <option value="Pendiente">⏳ Pendiente</option>
-                    <option value="Entregado">✓ Entregado</option>
-                    <option value="Cancelado">✕ Cancelado</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Conditional Mixed Payment Fields */}
-              {medioPago === 'Mixto' && (
-                <div className="bg-purple-50 border border-purple-200 p-3 rounded-xl space-y-2">
-                  <p className="text-xs font-bold text-purple-900">Desglose de Pago Combinado:</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[11px] font-bold text-purple-800 uppercase mb-1">Monto Efectivo ($)</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        placeholder="Ej: 5000"
-                        value={montoEfectivo}
-                        onChange={(e) => handleEfectivoChange(e.target.value)}
-                        className="w-full px-3 py-2 bg-white border border-purple-300 rounded-xl text-sm font-bold focus:outline-hidden focus:ring-2 focus:ring-purple-600"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-bold text-purple-800 uppercase mb-1">Monto Transferencia ($)</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        placeholder="Ej: 5000"
-                        value={montoTransferencia}
-                        onChange={(e) => setMontoTransferencia(e.target.value)}
-                        className="w-full px-3 py-2 bg-white border border-purple-300 rounded-xl text-sm font-bold focus:outline-hidden focus:ring-2 focus:ring-purple-600"
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-            </>
+            </div>
           )}
 
           {isCargaRapida && (
@@ -703,7 +773,7 @@ function VentasContent() {
                 Pedido cargado en borrador (Reservado / Pendiente)
               </p>
               <p className="text-gray-600 text-[11px]">
-                Podrás pesar las bandejas y definir el medio de pago más tarde al entregar.
+                Podrás completar o pesar las bandejas y definir el medio de pago más tarde al entregar.
               </p>
             </div>
           )}

@@ -66,17 +66,6 @@ export function Navbar() {
             );
           })}
         </nav>
-
-        {/* Quick Mobile Action Header button */}
-        <div className="md:hidden flex items-center gap-2">
-          <Link
-            href="/ventas?action=new"
-            className="flex items-center gap-1.5 bg-[#aa1919] text-white text-xs font-bold px-3 py-2 rounded-xl shadow-xs active:scale-95 transition-all"
-          >
-            <PlusCircle className="w-4 h-4" />
-            Venta
-          </Link>
-        </div>
       </div>
 
       {/* Sub-bar Navigation for Mobile Screens */}
