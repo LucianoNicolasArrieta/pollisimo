@@ -15,19 +15,33 @@ export function formatWeight(kg: number | null | undefined): string {
   }).format(kg) + ' kg';
 }
 
-export function formatDate(dateString: string | null | undefined): string {
-  if (!dateString) return '-';
-  // Extraer parte de la fecha antes de 'T' o espacio si es timestamp ISO
-  const str = dateString.toString().trim();
-  const cleanDate = str.includes('T') ? str.split('T')[0] : str.split(' ')[0];
-  const parts = cleanDate.split('-');
-  if (parts.length === 3) {
-    const day = parts[2].padStart(2, '0');
-    const month = parts[1].padStart(2, '0');
-    const year = parts[0];
+export function formatDate(dateInput: string | Date | null | undefined): string {
+  if (!dateInput) return '-';
+  const str = String(dateInput).trim();
+
+  // Coincidencia con patrón ISO (YYYY-MM-DD)
+  const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) {
+    const [, year, month, day] = isoMatch;
     return `${day}/${month}/${year}`;
   }
-  return dateString;
+
+  // Si ya tiene formato DD/MM/YYYY
+  const formattedMatch = str.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (formattedMatch) {
+    return str.substring(0, 10);
+  }
+
+  // Parsear mediante objeto Date
+  const d = new Date(dateInput);
+  if (!isNaN(d.getTime())) {
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}/${month}/${year}`;
+  }
+
+  return str;
 }
 
 export function roundToCentena(precio: number): number {

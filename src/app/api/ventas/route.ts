@@ -37,6 +37,15 @@ async function ensureSchema() {
   }
   try {
     await query(`
+      UPDATE ventas 
+      SET cantidad_bandejas = CASE 
+        WHEN peso_kg IS NOT NULL THEN GREATEST(1, FLOOR(peso_kg)) 
+        ELSE COALESCE(cantidad_bandejas, 1) 
+      END
+    `);
+  } catch (e) {}
+  try {
+    await query(`
       CREATE OR REPLACE VIEW v_resumen_produccion AS
       SELECT 
         p.id AS producto_id,
