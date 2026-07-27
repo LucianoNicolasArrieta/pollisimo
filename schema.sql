@@ -71,12 +71,16 @@ CREATE TABLE ventas (
   id VARCHAR(36) PRIMARY KEY,
   fecha DATE NOT NULL,
   cliente VARCHAR(255) NOT NULL,
+  cliente_id VARCHAR(36) NULL,
   producto_id VARCHAR(36) NOT NULL,
   peso_kg DECIMAL(10, 3) NULL,
+  cantidad_bandejas INT DEFAULT 1,
   precio_por_kg DECIMAL(10, 2) NOT NULL,
   precio_calculado DECIMAL(10, 2) DEFAULT 0.00,
   total_final DECIMAL(10, 2) DEFAULT 0.00,
-  medio_pago ENUM('Efectivo', 'Transferencia') NOT NULL DEFAULT 'Efectivo',
+  medio_pago ENUM('Efectivo', 'Transferencia', 'Mixto') NOT NULL DEFAULT 'Efectivo',
+  monto_efectivo DECIMAL(10, 2) DEFAULT 0.00,
+  monto_transferencia DECIMAL(10, 2) DEFAULT 0.00,
   estado ENUM('Reservado', 'Pendiente', 'Entregado', 'Cancelado') NOT NULL DEFAULT 'Pendiente',
   notas TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -168,6 +172,7 @@ LEFT JOIN (
     SUM(COALESCE(peso_kg, 0)) AS kilos_vendidos_reservados,
     SUM(
       CASE 
+        WHEN cantidad_bandejas IS NOT NULL AND cantidad_bandejas > 0 THEN cantidad_bandejas
         WHEN peso_kg IS NULL THEN 1 
         ELSE FLOOR(peso_kg) 
       END

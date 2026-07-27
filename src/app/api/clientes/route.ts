@@ -22,7 +22,7 @@ export async function GET(req: Request) {
          COUNT(v.id) AS total_ventas,
          COALESCE(SUM(CASE WHEN v.estado != 'Cancelado' THEN v.total_final ELSE 0 END), 0) AS total_gastado,
          COALESCE(SUM(CASE WHEN v.estado != 'Cancelado' THEN COALESCE(v.peso_kg, 0) ELSE 0 END), 0) AS total_kilos,
-         COALESCE(SUM(CASE WHEN v.estado != 'Cancelado' THEN (CASE WHEN v.peso_kg IS NULL THEN 1 ELSE FLOOR(v.peso_kg) END) ELSE 0 END), 0) AS total_bandejas,
+         COALESCE(SUM(CASE WHEN v.estado != 'Cancelado' THEN (CASE WHEN v.cantidad_bandejas IS NOT NULL AND v.cantidad_bandejas > 0 THEN v.cantidad_bandejas WHEN v.peso_kg IS NULL THEN 1 ELSE FLOOR(v.peso_kg) END) ELSE 0 END), 0) AS total_bandejas,
          MAX(v.fecha) AS ultima_compra
        FROM clientes c
        LEFT JOIN ventas v ON v.cliente_id = c.id OR (v.cliente_id IS NULL AND LOWER(v.cliente) = LOWER(c.nombre))

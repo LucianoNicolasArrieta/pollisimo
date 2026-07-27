@@ -110,6 +110,7 @@ export interface Venta {
   producto_id: string;
   producto_nombre?: string;
   peso_kg: number | null;
+  cantidad_bandejas?: number;
   precio_por_kg: number;
   precio_calculado: number;
   total_final: number;

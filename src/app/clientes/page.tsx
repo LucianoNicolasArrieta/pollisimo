@@ -422,7 +422,7 @@ export default function ClientesPage() {
                   </div>
                   <div className="flex justify-between text-[11px] text-gray-500">
                     <span>
-                      {v.peso_kg !== null ? `${v.peso_kg.toFixed(3)} kg` : 'Reserva sin peso'} ({v.medio_pago})
+                      {(v.cantidad_bandejas || (v.peso_kg !== null ? Math.max(1, Math.floor(v.peso_kg)) : 1))} {(v.cantidad_bandejas || 1) === 1 ? 'bandeja' : 'bandejas'} • {v.peso_kg !== null ? `${v.peso_kg.toFixed(3)} kg` : 'Reserva sin peso'} ({v.medio_pago})
                     </span>
                     {v.notas && <span className="italic truncate max-w-[150px]">{v.notas}</span>}
                   </div>

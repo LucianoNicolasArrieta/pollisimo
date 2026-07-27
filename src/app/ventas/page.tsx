@@ -33,10 +33,12 @@ function VentasContent() {
   const [montoTotalInput, setMontoTotalInput] = useState('');
   const [lastEdited, setLastEdited] = useState<'peso' | 'total' | null>(null);
 
+  const [cantidadBandejas, setCantidadBandejas] = useState<string>('1');
+
   const [medioPago, setMedioPago] = useState<MedioPago>('Efectivo');
   const [montoEfectivo, setMontoEfectivo] = useState('');
   const [montoTransferencia, setMontoTransferencia] = useState('');
-  const [estado, setEstado] = useState<EstadoVenta>('Pendiente');
+  const [estado, setEstado] = useState<EstadoVenta>('Entregado');
   const [notas, setNotas] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -92,18 +94,19 @@ function VentasContent() {
     setPrecioPorKg(defaultPrecioStr);
 
     setPesoKg('');
+    setCantidadBandejas('1');
     setMontoTotalInput('');
     setLastEdited(null);
 
     setMedioPago('Efectivo');
     setMontoEfectivo('');
     setMontoTransferencia('');
-    setEstado(quickMode ? 'Reservado' : 'Pendiente');
+    setEstado(quickMode ? 'Reservado' : 'Entregado');
     setNotas('');
     setIsModalOpen(true);
   };
 
-  const openEditModal = (v: Venta, completeOnly = false) => {
+  const openEditModal = (v: Venta) => {
     setEditingVenta(v);
     setIsCargaRapida(false);
     setFecha(v.fecha);
@@ -118,13 +121,14 @@ function VentasContent() {
     const pVal = v.peso_kg !== null && v.peso_kg !== undefined ? v.peso_kg.toString().replace('.', ',') : '';
     const tVal = v.total_final ? v.total_final.toString() : '';
     setPesoKg(pVal);
+    setCantidadBandejas((v.cantidad_bandejas || (v.peso_kg !== null ? Math.max(1, Math.floor(v.peso_kg)) : 1)).toString());
     setMontoTotalInput(tVal);
     setLastEdited(v.peso_kg !== null ? 'peso' : (v.total_final ? 'total' : null));
 
     setMedioPago(v.medio_pago);
     setMontoEfectivo(v.monto_efectivo ? v.monto_efectivo.toString() : '');
     setMontoTransferencia(v.monto_transferencia ? v.monto_transferencia.toString() : '');
-    setEstado(completeOnly && v.estado !== 'Entregado' ? 'Entregado' : v.estado);
+    setEstado(v.estado);
     setNotas(v.notas || '');
     setIsModalOpen(true);
   };
@@ -147,6 +151,7 @@ function VentasContent() {
     if (pNum > 0 && prNum > 0) {
       const calcTotal = roundToCentena(pNum * prNum);
       setMontoTotalInput(calcTotal > 0 ? calcTotal.toString() : '');
+      setCantidadBandejas(Math.max(1, Math.floor(pNum)).toString());
     } else if (!val) {
       setMontoTotalInput('');
     }
@@ -158,8 +163,10 @@ function VentasContent() {
     const tNum = parseDecimal(val);
     const prNum = parseDecimal(precioPorKg);
     if (tNum > 0 && prNum > 0) {
-      const calcKg = (tNum / prNum).toFixed(3).replace('.', ',');
+      const calcKgNum = tNum / prNum;
+      const calcKg = calcKgNum.toFixed(3).replace('.', ',');
       setPesoKg(calcKg);
+      setCantidadBandejas(Math.max(1, Math.floor(calcKgNum)).toString());
     } else if (!val) {
       setPesoKg('');
     }
@@ -199,7 +206,7 @@ function VentasContent() {
   // Live preview calculation for modal
   const livePesoNum = parseDecimalOrNull(pesoKg);
   const liveTotalFinal = parseDecimal(montoTotalInput);
-  const liveBandejas = livePesoNum ? Math.max(1, Math.floor(livePesoNum)) : 1;
+  const liveBandejas = Math.max(1, parseInt(cantidadBandejas) || (livePesoNum ? Math.floor(livePesoNum) : 1));
 
   const handleEfectivoChange = (val: string) => {
     setMontoEfectivo(val);
@@ -226,6 +233,7 @@ function VentasContent() {
         cliente_id: clienteId || undefined,
         producto_id: productoId,
         peso_kg: parseDecimalOrNull(pesoKg),
+        cantidad_bandejas: Math.max(1, parseInt(cantidadBandejas) || 1),
         precio_por_kg: parseDecimal(precioPorKg),
         total_final: liveTotalFinal,
         medio_pago: medioPago,
@@ -345,8 +353,7 @@ function VentasContent() {
           </div>
         ) : (
           filteredVentas.map((v) => {
-            const numBandejas = v.peso_kg !== null ? Math.max(1, Math.floor(v.peso_kg)) : 1;
-            const isPendingOrReserved = v.estado === 'Pendiente' || v.estado === 'Reservado';
+            const numBandejas = v.cantidad_bandejas || (v.peso_kg !== null ? Math.max(1, Math.floor(v.peso_kg)) : 1);
             return (
               <div key={v.id} className="bg-white border border-[#ebdcca] rounded-2xl p-4 shadow-xs space-y-3">
                 <div className="flex items-center justify-between">
@@ -385,17 +392,8 @@ function VentasContent() {
                   </div>
 
                   <div className="flex items-center gap-1.5">
-                    {isPendingOrReserved && (
-                      <button
-                        onClick={() => openEditModal(v, true)}
-                        className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-xs transition-colors flex items-center gap-1"
-                      >
-                        <Scale className="w-3.5 h-3.5" />
-                        Pesar / Entregar
-                      </button>
-                    )}
                     <button
-                      onClick={() => openEditModal(v, false)}
+                      onClick={() => openEditModal(v)}
                       className="p-1.5 text-amber-800 bg-amber-50 rounded-xl font-bold text-xs hover:bg-amber-100 flex items-center gap-1"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
@@ -442,8 +440,7 @@ function VentasContent() {
                 </thead>
                 <tbody className="divide-y divide-gray-100 font-medium">
                   {filteredVentas.map((v) => {
-                    const bandejasCount = v.peso_kg !== null ? Math.max(1, Math.floor(v.peso_kg)) : 1;
-                    const isPendingOrReserved = v.estado === 'Pendiente' || v.estado === 'Reservado';
+                    const bandejasCount = v.cantidad_bandejas || (v.peso_kg !== null ? Math.max(1, Math.floor(v.peso_kg)) : 1);
                     return (
                       <tr key={v.id} className="hover:bg-[#fcf8f2] transition-colors">
                         <td className="px-4 py-3.5 whitespace-nowrap">
@@ -488,18 +485,8 @@ function VentasContent() {
                         </td>
                         <td className="px-4 py-3.5 text-right">
                           <div className="flex items-center justify-end gap-1.5">
-                            {isPendingOrReserved && (
-                              <button
-                                onClick={() => openEditModal(v, true)}
-                                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs shadow-xs transition-colors flex items-center gap-1"
-                                title="Pesar y Entregar Venta"
-                              >
-                                <Scale className="w-3.5 h-3.5" />
-                                Pesar / Entregar
-                              </button>
-                            )}
                             <button
-                              onClick={() => openEditModal(v, false)}
+                              onClick={() => openEditModal(v)}
                               className="p-1.5 text-gray-600 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors"
                               title="Editar Venta"
                             >
@@ -560,7 +547,7 @@ function VentasContent() {
                 type="button"
                 onClick={() => {
                   setIsCargaRapida(false);
-                  setEstado('Pendiente');
+                  setEstado('Entregado');
                 }}
                 className={`flex-1 py-2 text-xs font-extrabold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
                   !isCargaRapida ? 'bg-[#aa1919] text-white shadow-xs' : 'text-gray-600 hover:text-[#aa1919]'
@@ -642,6 +629,43 @@ function VentasContent() {
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* CANTIDAD DE BANDEJAS CONTROL */}
+          <div className="bg-[#fbf5ea] border border-[#eee0cb] p-3.5 rounded-xl space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-extrabold text-[#881313] uppercase flex items-center gap-1">
+                <ShoppingBag className="w-4 h-4 text-[#aa1919]" />
+                Cantidad de Bandejas *
+              </label>
+              <span className="text-[10px] text-gray-500 font-semibold">
+                {isCargaRapida ? 'Descuenta stock al reservar' : 'Bandejas del pedido'}
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setCantidadBandejas((prev) => Math.max(1, (parseInt(prev) || 1) - 1).toString())}
+                className="w-10 h-10 bg-white border border-gray-300 hover:bg-amber-100 text-[#881313] rounded-xl font-black text-xl flex items-center justify-center transition-all active:scale-95 shadow-xs"
+              >
+                -
+              </button>
+              <input
+                type="number"
+                min="1"
+                required
+                value={cantidadBandejas}
+                onChange={(e) => setCantidadBandejas(e.target.value)}
+                className="flex-1 px-3 py-2 bg-white border border-gray-300 rounded-xl text-center text-lg font-black text-[#881313] focus:outline-hidden focus:ring-2 focus:ring-[#aa1919]"
+              />
+              <button
+                type="button"
+                onClick={() => setCantidadBandejas((prev) => ((parseInt(prev) || 0) + 1).toString())}
+                className="w-10 h-10 bg-white border border-gray-300 hover:bg-amber-100 text-[#881313] rounded-xl font-black text-xl flex items-center justify-center transition-all active:scale-95 shadow-xs"
+              >
+                +
+              </button>
+            </div>
           </div>
 
           {/* BIDIRECTIONAL PESO AND MONTO TOTAL INPUTS */}

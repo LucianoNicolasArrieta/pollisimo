@@ -25,12 +25,61 @@ async function resolveClientId(clienteName: string, clienteIdInput?: string): Pr
   return { id: newId, nombre: cleanName };
 }
 
+let schemaEnsured = false;
+async function ensureSchema() {
+  if (schemaEnsured) return;
+  try {
+    await query('ALTER TABLE ventas ADD COLUMN cantidad_bandejas INT DEFAULT 1');
+  } catch (e) {
+    try {
+      await query('ALTER TABLE ventas ADD COLUMN IF NOT EXISTS cantidad_bandejas INT DEFAULT 1');
+    } catch (e2) {}
+  }
+  try {
+    await query(`
+      CREATE OR REPLACE VIEW v_resumen_produccion AS
+      SELECT 
+        p.id AS producto_id,
+        p.nombre AS producto_nombre,
+        (COALESCE(p.stock_inicial_kilos, 0) + COALESCE(prod.kilos_producidos, 0)) AS kilos_producidos,
+        (COALESCE(p.stock_inicial_bandejas, 0) + COALESCE(prod.bandejas_producidas, 0)) AS bandejas_producidas,
+        COALESCE(v.kilos_vendidos_reservados, 0) AS kilos_vendidos_reservados,
+        COALESCE(v.bandejas_vendidas_reservadas, 0) AS bandejas_vendidas_reservadas,
+        ((COALESCE(p.stock_inicial_kilos, 0) + COALESCE(prod.kilos_producidos, 0)) - COALESCE(v.kilos_vendidos_reservados, 0)) AS kilos_disponibles,
+        ((COALESCE(p.stock_inicial_bandejas, 0) + COALESCE(prod.bandejas_producidas, 0)) - COALESCE(v.bandejas_vendidas_reservadas, 0)) AS bandejas_disponibles
+      FROM productos p
+      LEFT JOIN (
+        SELECT producto_id, SUM(kilos_totales) AS kilos_producidos, SUM(bandejas_obtenidas) AS bandejas_producidas
+        FROM producciones
+        GROUP BY producto_id
+      ) prod ON prod.producto_id = p.id
+      LEFT JOIN (
+        SELECT 
+          producto_id, 
+          SUM(COALESCE(peso_kg, 0)) AS kilos_vendidos_reservados,
+          SUM(
+            CASE 
+              WHEN cantidad_bandejas IS NOT NULL AND cantidad_bandejas > 0 THEN cantidad_bandejas
+              WHEN peso_kg IS NULL THEN 1 
+              ELSE FLOOR(peso_kg) 
+            END
+          ) AS bandejas_vendidas_reservadas
+        FROM ventas
+        WHERE estado != 'Cancelado'
+        GROUP BY producto_id
+      ) v ON v.producto_id = p.id
+    `);
+  } catch (e) {}
+  schemaEnsured = true;
+}
+
 export async function GET() {
   try {
+    await ensureSchema();
     const rows = await query<any[]>(
       `SELECT v.id, v.fecha, v.cliente, v.cliente_id, c.direccion AS cliente_direccion, c.telefono AS cliente_telefono,
               v.producto_id, p.nombre AS producto_nombre,
-              v.peso_kg, v.precio_por_kg, v.precio_calculado, v.total_final, v.medio_pago,
+              v.peso_kg, v.cantidad_bandejas, v.precio_por_kg, v.precio_calculado, v.total_final, v.medio_pago,
               v.monto_efectivo, v.monto_transferencia, v.estado, v.notas, v.created_at
        FROM ventas v
        JOIN productos p ON p.id = v.producto_id
@@ -38,15 +87,19 @@ export async function GET() {
        ORDER BY v.fecha DESC, v.created_at DESC`
     );
 
-    const ventasFormatted: Venta[] = rows.map((v) => ({
-      ...v,
-      peso_kg: v.peso_kg !== null && v.peso_kg !== undefined ? Number(v.peso_kg) : null,
-      precio_por_kg: Number(v.precio_por_kg) || 0,
-      precio_calculado: Number(v.precio_calculado) || 0,
-      total_final: Number(v.total_final) || 0,
-      monto_efectivo: Number(v.monto_efectivo) || 0,
-      monto_transferencia: Number(v.monto_transferencia) || 0,
-    }));
+    const ventasFormatted: Venta[] = rows.map((v) => {
+      const pKg = v.peso_kg !== null && v.peso_kg !== undefined ? Number(v.peso_kg) : null;
+      return {
+        ...v,
+        peso_kg: pKg,
+        cantidad_bandejas: Number(v.cantidad_bandejas) || (pKg !== null ? Math.max(1, Math.floor(pKg)) : 1),
+        precio_por_kg: Number(v.precio_por_kg) || 0,
+        precio_calculado: Number(v.precio_calculado) || 0,
+        total_final: Number(v.total_final) || 0,
+        monto_efectivo: Number(v.monto_efectivo) || 0,
+        monto_transferencia: Number(v.monto_transferencia) || 0,
+      };
+    });
 
     return NextResponse.json(ventasFormatted);
   } catch (error: any) {
@@ -56,6 +109,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    await ensureSchema();
     const body = await req.json();
     const {
       fecha = getTodayLocalDateString(),
@@ -63,6 +117,7 @@ export async function POST(req: Request) {
       cliente_id,
       producto_id,
       peso_kg = null,
+      cantidad_bandejas,
       precio_por_kg,
       medio_pago = 'Efectivo',
       monto_efectivo = 0,
@@ -89,12 +144,13 @@ export async function POST(req: Request) {
 
     const id = randomUUID();
     const parsedPeso = peso_kg !== null && peso_kg !== '' && !isNaN(Number(peso_kg)) ? Number(peso_kg) : null;
+    const parsedBandejas = Math.max(1, Number(cantidad_bandejas) || (parsedPeso !== null ? Math.max(1, Math.floor(parsedPeso)) : 1));
     const parsedEfectivo = Number(monto_efectivo) || 0;
     const parsedTransferencia = Number(monto_transferencia) || 0;
 
     await query(
-      'INSERT INTO ventas (id, fecha, cliente, cliente_id, producto_id, peso_kg, precio_por_kg, medio_pago, monto_efectivo, monto_transferencia, estado, notas) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [id, fecha, resolvedClienteNombre, resolvedClienteId, producto_id, parsedPeso, precioKg, medio_pago, parsedEfectivo, parsedTransferencia, estado, notas]
+      'INSERT INTO ventas (id, fecha, cliente, cliente_id, producto_id, peso_kg, cantidad_bandejas, precio_por_kg, medio_pago, monto_efectivo, monto_transferencia, estado, notas) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, fecha, resolvedClienteNombre, resolvedClienteId, producto_id, parsedPeso, parsedBandejas, precioKg, medio_pago, parsedEfectivo, parsedTransferencia, estado, notas]
     );
 
     const createdRows = await query<any[]>('SELECT * FROM ventas WHERE id = ?', [id]);
@@ -107,8 +163,9 @@ export async function POST(req: Request) {
 
 export async function PUT(req: Request) {
   try {
+    await ensureSchema();
     const body = await req.json();
-    const { id, fecha, cliente, cliente_id, producto_id, peso_kg, precio_por_kg, medio_pago, monto_efectivo = 0, monto_transferencia = 0, estado, notas } = body;
+    const { id, fecha, cliente, cliente_id, producto_id, peso_kg, cantidad_bandejas, precio_por_kg, medio_pago, monto_efectivo = 0, monto_transferencia = 0, estado, notas } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'ID es requerido' }, { status: 400 });
@@ -117,14 +174,15 @@ export async function PUT(req: Request) {
     const { id: resolvedClienteId, nombre: resolvedClienteNombre } = await resolveClientId(cliente, cliente_id);
 
     const parsedPeso = peso_kg !== null && peso_kg !== '' && !isNaN(Number(peso_kg)) ? Number(peso_kg) : null;
+    const parsedBandejas = Math.max(1, Number(cantidad_bandejas) || (parsedPeso !== null ? Math.max(1, Math.floor(parsedPeso)) : 1));
     const parsedEfectivo = Number(monto_efectivo) || 0;
     const parsedTransferencia = Number(monto_transferencia) || 0;
 
     await query(
       `UPDATE ventas
-       SET fecha = ?, cliente = ?, cliente_id = ?, producto_id = ?, peso_kg = ?, precio_por_kg = ?, medio_pago = ?, monto_efectivo = ?, monto_transferencia = ?, estado = ?, notas = ?
+       SET fecha = ?, cliente = ?, cliente_id = ?, producto_id = ?, peso_kg = ?, cantidad_bandejas = ?, precio_por_kg = ?, medio_pago = ?, monto_efectivo = ?, monto_transferencia = ?, estado = ?, notas = ?
        WHERE id = ?`,
-      [fecha, resolvedClienteNombre, resolvedClienteId, producto_id, parsedPeso, precio_por_kg, medio_pago, parsedEfectivo, parsedTransferencia, estado, notas, id]
+      [fecha, resolvedClienteNombre, resolvedClienteId, producto_id, parsedPeso, parsedBandejas, precio_por_kg, medio_pago, parsedEfectivo, parsedTransferencia, estado, notas, id]
     );
 
     const updatedRows = await query<any[]>('SELECT * FROM ventas WHERE id = ?', [id]);
