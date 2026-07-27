@@ -109,7 +109,8 @@ function VentasContent() {
   const openEditModal = (v: Venta) => {
     setEditingVenta(v);
     setIsCargaRapida(false);
-    setFecha(v.fecha);
+    const formattedFecha = v.fecha ? String(v.fecha).split('T')[0].substring(0, 10) : getTodayLocalDateString();
+    setFecha(formattedFecha);
     setClienteInput(v.cliente);
     setClienteId(v.cliente_id || '');
     setShowClientSuggestions(false);
@@ -353,7 +354,7 @@ function VentasContent() {
           </div>
         ) : (
           filteredVentas.map((v) => {
-            const numBandejas = v.cantidad_bandejas || (v.peso_kg !== null ? Math.max(1, Math.floor(v.peso_kg)) : 1);
+            const numBandejas = v.peso_kg !== null ? Math.max(1, Math.floor(v.peso_kg)) : (v.cantidad_bandejas || 1);
             return (
               <div key={v.id} className="bg-white border border-[#ebdcca] rounded-2xl p-4 shadow-xs space-y-3">
                 <div className="flex items-center justify-between">
@@ -440,7 +441,7 @@ function VentasContent() {
                 </thead>
                 <tbody className="divide-y divide-gray-100 font-medium">
                   {filteredVentas.map((v) => {
-                    const bandejasCount = v.cantidad_bandejas || (v.peso_kg !== null ? Math.max(1, Math.floor(v.peso_kg)) : 1);
+                    const bandejasCount = v.peso_kg !== null ? Math.max(1, Math.floor(v.peso_kg)) : (v.cantidad_bandejas || 1);
                     return (
                       <tr key={v.id} className="hover:bg-[#fcf8f2] transition-colors">
                         <td className="px-4 py-3.5 whitespace-nowrap">

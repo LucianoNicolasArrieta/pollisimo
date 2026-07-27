@@ -56,12 +56,16 @@ async function ensureSchema() {
       LEFT JOIN (
         SELECT 
           producto_id, 
-          SUM(COALESCE(peso_kg, 0)) AS kilos_vendidos_reservados,
           SUM(
             CASE 
-              WHEN cantidad_bandejas IS NOT NULL AND cantidad_bandejas > 0 THEN cantidad_bandejas
-              WHEN peso_kg IS NULL THEN 1 
-              ELSE FLOOR(peso_kg) 
+              WHEN peso_kg IS NOT NULL THEN peso_kg 
+              ELSE COALESCE(cantidad_bandejas, 1) * 1.0 
+            END
+          ) AS kilos_vendidos_reservados,
+          SUM(
+            CASE 
+              WHEN peso_kg IS NOT NULL THEN GREATEST(1, FLOOR(peso_kg)) 
+              ELSE COALESCE(cantidad_bandejas, 1) 
             END
           ) AS bandejas_vendidas_reservadas
         FROM ventas
@@ -91,8 +95,9 @@ export async function GET() {
       const pKg = v.peso_kg !== null && v.peso_kg !== undefined ? Number(v.peso_kg) : null;
       return {
         ...v,
+        fecha: v.fecha ? String(v.fecha).split('T')[0].substring(0, 10) : getTodayLocalDateString(),
         peso_kg: pKg,
-        cantidad_bandejas: Number(v.cantidad_bandejas) || (pKg !== null ? Math.max(1, Math.floor(pKg)) : 1),
+        cantidad_bandejas: pKg !== null ? Math.max(1, Math.floor(pKg)) : (Number(v.cantidad_bandejas) || 1),
         precio_por_kg: Number(v.precio_por_kg) || 0,
         precio_calculado: Number(v.precio_calculado) || 0,
         total_final: Number(v.total_final) || 0,
@@ -144,7 +149,7 @@ export async function POST(req: Request) {
 
     const id = randomUUID();
     const parsedPeso = peso_kg !== null && peso_kg !== '' && !isNaN(Number(peso_kg)) ? Number(peso_kg) : null;
-    const parsedBandejas = Math.max(1, Number(cantidad_bandejas) || (parsedPeso !== null ? Math.max(1, Math.floor(parsedPeso)) : 1));
+    const parsedBandejas = parsedPeso !== null ? Math.max(1, Math.floor(parsedPeso)) : Math.max(1, Number(cantidad_bandejas) || 1);
     const parsedEfectivo = Number(monto_efectivo) || 0;
     const parsedTransferencia = Number(monto_transferencia) || 0;
 
@@ -174,7 +179,7 @@ export async function PUT(req: Request) {
     const { id: resolvedClienteId, nombre: resolvedClienteNombre } = await resolveClientId(cliente, cliente_id);
 
     const parsedPeso = peso_kg !== null && peso_kg !== '' && !isNaN(Number(peso_kg)) ? Number(peso_kg) : null;
-    const parsedBandejas = Math.max(1, Number(cantidad_bandejas) || (parsedPeso !== null ? Math.max(1, Math.floor(parsedPeso)) : 1));
+    const parsedBandejas = parsedPeso !== null ? Math.max(1, Math.floor(parsedPeso)) : Math.max(1, Number(cantidad_bandejas) || 1);
     const parsedEfectivo = Number(monto_efectivo) || 0;
     const parsedTransferencia = Number(monto_transferencia) || 0;
 

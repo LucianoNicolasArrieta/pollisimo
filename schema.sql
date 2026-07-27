@@ -169,12 +169,16 @@ LEFT JOIN (
 LEFT JOIN (
   SELECT 
     producto_id, 
-    SUM(COALESCE(peso_kg, 0)) AS kilos_vendidos_reservados,
     SUM(
       CASE 
-        WHEN cantidad_bandejas IS NOT NULL AND cantidad_bandejas > 0 THEN cantidad_bandejas
-        WHEN peso_kg IS NULL THEN 1 
-        ELSE FLOOR(peso_kg) 
+        WHEN peso_kg IS NOT NULL THEN peso_kg 
+        ELSE COALESCE(cantidad_bandejas, 1) * 1.0 
+      END
+    ) AS kilos_vendidos_reservados,
+    SUM(
+      CASE 
+        WHEN peso_kg IS NOT NULL THEN GREATEST(1, FLOOR(peso_kg)) 
+        ELSE COALESCE(cantidad_bandejas, 1) 
       END
     ) AS bandejas_vendidas_reservadas
   FROM ventas
