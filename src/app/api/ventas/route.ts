@@ -86,6 +86,21 @@ async function ensureSchema() {
   schemaEnsured = true;
 }
 
+function toCleanDate(val: any): string {
+  if (!val) return getTodayLocalDateString();
+  const str = String(val).trim();
+  const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+  const d = new Date(val);
+  if (!isNaN(d.getTime())) {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+  return getTodayLocalDateString();
+}
+
 export async function GET() {
   try {
     await ensureSchema();
@@ -104,7 +119,7 @@ export async function GET() {
       const pKg = v.peso_kg !== null && v.peso_kg !== undefined ? Number(v.peso_kg) : null;
       return {
         ...v,
-        fecha: v.fecha ? String(v.fecha).split('T')[0].substring(0, 10) : getTodayLocalDateString(),
+        fecha: toCleanDate(v.fecha),
         peso_kg: pKg,
         cantidad_bandejas: pKg !== null ? Math.max(1, Math.floor(pKg)) : (Number(v.cantidad_bandejas) || 1),
         precio_por_kg: Number(v.precio_por_kg) || 0,
@@ -157,6 +172,7 @@ export async function POST(req: Request) {
     }
 
     const id = randomUUID();
+    const cleanFecha = toCleanDate(fecha);
     const parsedPeso = peso_kg !== null && peso_kg !== '' && !isNaN(Number(peso_kg)) ? Number(peso_kg) : null;
     const parsedBandejas = parsedPeso !== null ? Math.max(1, Math.floor(parsedPeso)) : Math.max(1, Number(cantidad_bandejas) || 1);
     const parsedEfectivo = Number(monto_efectivo) || 0;
@@ -164,7 +180,7 @@ export async function POST(req: Request) {
 
     await query(
       'INSERT INTO ventas (id, fecha, cliente, cliente_id, producto_id, peso_kg, cantidad_bandejas, precio_por_kg, medio_pago, monto_efectivo, monto_transferencia, estado, notas) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [id, fecha, resolvedClienteNombre, resolvedClienteId, producto_id, parsedPeso, parsedBandejas, precioKg, medio_pago, parsedEfectivo, parsedTransferencia, estado, notas]
+      [id, cleanFecha, resolvedClienteNombre, resolvedClienteId, producto_id, parsedPeso, parsedBandejas, precioKg, medio_pago, parsedEfectivo, parsedTransferencia, estado, notas]
     );
 
     const createdRows = await query<any[]>('SELECT * FROM ventas WHERE id = ?', [id]);
@@ -187,6 +203,7 @@ export async function PUT(req: Request) {
 
     const { id: resolvedClienteId, nombre: resolvedClienteNombre } = await resolveClientId(cliente, cliente_id);
 
+    const cleanFecha = toCleanDate(fecha);
     const parsedPeso = peso_kg !== null && peso_kg !== '' && !isNaN(Number(peso_kg)) ? Number(peso_kg) : null;
     const parsedBandejas = parsedPeso !== null ? Math.max(1, Math.floor(parsedPeso)) : Math.max(1, Number(cantidad_bandejas) || 1);
     const parsedEfectivo = Number(monto_efectivo) || 0;
@@ -196,7 +213,7 @@ export async function PUT(req: Request) {
       `UPDATE ventas
        SET fecha = ?, cliente = ?, cliente_id = ?, producto_id = ?, peso_kg = ?, cantidad_bandejas = ?, precio_por_kg = ?, medio_pago = ?, monto_efectivo = ?, monto_transferencia = ?, estado = ?, notas = ?
        WHERE id = ?`,
-      [fecha, resolvedClienteNombre, resolvedClienteId, producto_id, parsedPeso, parsedBandejas, precio_por_kg, medio_pago, parsedEfectivo, parsedTransferencia, estado, notas, id]
+      [cleanFecha, resolvedClienteNombre, resolvedClienteId, producto_id, parsedPeso, parsedBandejas, precio_por_kg, medio_pago, parsedEfectivo, parsedTransferencia, estado, notas, id]
     );
 
     const updatedRows = await query<any[]>('SELECT * FROM ventas WHERE id = ?', [id]);
