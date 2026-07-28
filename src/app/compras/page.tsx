@@ -4,13 +4,14 @@ import React, { useEffect, useState } from 'react';
 import { Compra, InsumoStock } from '@/lib/types';
 import { formatCurrency, formatDate, getTodayLocalDateString, parseDecimal } from '@/lib/utils';
 import { Modal } from '@/components/Modal';
-import { Receipt, Plus, Trash2, Check, X } from 'lucide-react';
+import { Receipt, Plus, Trash2, Check, X, Pencil } from 'lucide-react';
 
 export default function ComprasPage() {
   const [compras, setCompras] = useState<Compra[]>([]);
   const [insumos, setInsumos] = useState<InsumoStock[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingCompra, setEditingCompra] = useState<Compra | null>(null);
 
   // Form State
   const [fecha, setFecha] = useState(getTodayLocalDateString());
@@ -44,6 +45,7 @@ export default function ComprasPage() {
   }, []);
 
   const openModal = () => {
+    setEditingCompra(null);
     setFecha(getTodayLocalDateString());
     setInsumoId(insumos.length > 0 ? insumos[0].id : '');
     setCantidad('');
@@ -54,10 +56,23 @@ export default function ComprasPage() {
     setIsModalOpen(true);
   };
 
+  const openEditModal = (c: Compra) => {
+    setEditingCompra(c);
+    const dateFormatted = c.fecha ? String(c.fecha).substring(0, 10) : getTodayLocalDateString();
+    setFecha(dateFormatted);
+    setInsumoId(c.insumo_id);
+    setCantidad(c.cantidad.toString());
+    setCostoUnitario(c.costo_unitario.toString());
+    setProveedor(c.proveedor || '');
+    setNotas(c.notas || '');
+    setAfectaStock(Boolean(c.afecta_stock));
+    setIsModalOpen(true);
+  };
+
   const handleInsumoChange = (id: string) => {
     setInsumoId(id);
     const selected = insumos.find((i) => i.id === id);
-    if (selected) {
+    if (selected && !editingCompra) {
       setCostoUnitario(selected.costo_unitario.toString());
     }
   };
@@ -67,7 +82,9 @@ export default function ComprasPage() {
     if (!insumoId || !cantidad || !costoUnitario) return;
     setSaving(true);
     try {
+      const method = editingCompra ? 'PUT' : 'POST';
       const payload = {
+        ...(editingCompra ? { id: editingCompra.id } : {}),
         fecha,
         insumo_id: insumoId,
         cantidad: Number(cantidad),
@@ -78,13 +95,14 @@ export default function ComprasPage() {
       };
 
       const res = await fetch('/api/compras', {
-        method: 'POST',
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
 
       if (res.ok) {
         setIsModalOpen(false);
+        setEditingCompra(null);
         fetchComprasAndInsumos();
       }
     } catch (e) {
@@ -186,13 +204,22 @@ export default function ComprasPage() {
                       )}
                     </td>
                     <td className="px-4 py-3.5 text-right">
-                      <button
-                        onClick={() => handleDelete(c.id)}
-                        className="p-1.5 text-gray-400 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
-                        title="Eliminar"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => openEditModal(c)}
+                          className="p-1.5 text-gray-400 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors"
+                          title="Editar"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(c.id)}
+                          className="p-1.5 text-gray-400 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Eliminar"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -203,7 +230,14 @@ export default function ComprasPage() {
       )}
 
       {/* Modal Form */}
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Cargar Compra de Insumo">
+      <Modal
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditingCompra(null);
+        }}
+        title={editingCompra ? 'Editar Compra de Insumo' : 'Cargar Compra de Insumo'}
+      >
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -310,7 +344,10 @@ export default function ComprasPage() {
           <div className="flex items-center justify-end gap-2 pt-3">
             <button
               type="button"
-              onClick={() => setIsModalOpen(false)}
+              onClick={() => {
+                setIsModalOpen(false);
+                setEditingCompra(null);
+              }}
               className="px-4 py-2 text-xs font-bold text-gray-600 hover:bg-gray-100 rounded-xl"
             >
               Cancelar
@@ -320,7 +357,7 @@ export default function ComprasPage() {
               disabled={saving}
               className="px-5 py-2.5 bg-[#aa1919] hover:bg-[#881313] text-white text-xs font-bold rounded-xl shadow-md transition-all active:scale-95 disabled:opacity-50"
             >
-              {saving ? 'Guardando...' : 'Registrar Compra'}
+              {saving ? 'Guardando...' : editingCompra ? 'Guardar Cambios' : 'Registrar Compra'}
             </button>
           </div>
         </form>

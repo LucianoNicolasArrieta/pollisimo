@@ -60,6 +60,44 @@ export async function POST(req: Request) {
   }
 }
 
+export async function PUT(req: Request) {
+  try {
+    const body = await req.json();
+    const {
+      id,
+      fecha = getTodayLocalDateString(),
+      insumo_id,
+      cantidad,
+      costo_unitario,
+      proveedor = '',
+      notas = '',
+      afecta_stock = true,
+      actualizar_costo_insumo = true,
+    } = body;
+
+    if (!id) {
+      return NextResponse.json({ error: 'ID es requerido' }, { status: 400 });
+    }
+
+    if (!insumo_id || !cantidad || !costo_unitario) {
+      return NextResponse.json({ error: 'Insumo, cantidad y costo unitario son requeridos' }, { status: 400 });
+    }
+
+    await query(
+      'UPDATE compras SET fecha = ?, insumo_id = ?, cantidad = ?, costo_unitario = ?, proveedor = ?, notas = ?, afecta_stock = ? WHERE id = ?',
+      [fecha, insumo_id, cantidad, costo_unitario, proveedor, notas, afecta_stock ? 1 : 0, id]
+    );
+
+    if (actualizar_costo_insumo) {
+      await query('UPDATE insumos SET costo_unitario = ? WHERE id = ?', [costo_unitario, insumo_id]);
+    }
+
+    return NextResponse.json({ success: true, id });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
 export async function DELETE(req: Request) {
   try {
     const { searchParams } = new URL(req.url);

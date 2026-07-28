@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { Produccion, ResumenProduccion, Producto, InsumoStock } from '@/lib/types';
 import { formatCurrency, formatDate, parseDecimal, getTodayLocalDateString } from '@/lib/utils';
 import { Modal } from '@/components/Modal';
-import { Factory, Plus, Trash2, Check, X, Layers, Scale, DollarSign, SlidersHorizontal, Beef } from 'lucide-react';
+import { Factory, Plus, Trash2, Check, X, Layers, Scale, DollarSign, SlidersHorizontal, Beef, Pencil } from 'lucide-react';
 
 export default function ProduccionPage() {
   const [tandas, setTandas] = useState<Produccion[]>([]);
@@ -13,6 +13,7 @@ export default function ProduccionPage() {
   const [insumos, setInsumos] = useState<InsumoStock[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingProduccion, setEditingProduccion] = useState<Produccion | null>(null);
 
   // Direct Stock Adjust State
   const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false);
@@ -67,6 +68,7 @@ export default function ProduccionPage() {
   }, []);
 
   const openModal = () => {
+    setEditingProduccion(null);
     setFecha(getTodayLocalDateString());
     setProductoId(productos.length > 0 ? productos[0].id : '');
     setBandejasObtenidas('');
@@ -81,6 +83,31 @@ export default function ProduccionPage() {
     });
     setInsumosUsados(initialInputs);
 
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (t: Produccion) => {
+    setEditingProduccion(t);
+    const dateFormatted = t.fecha ? String(t.fecha).substring(0, 10) : getTodayLocalDateString();
+    setFecha(dateFormatted);
+    setProductoId(t.producto_id);
+    setBandejasObtenidas(t.bandejas_obtenidas.toString());
+    setKilosTotales(t.kilos_totales.toString());
+    setAfectaStock(Boolean(t.afecta_stock));
+    setNotas(t.notas || '');
+
+    const inputs: { [key: string]: string } = {};
+    insumos.forEach((ins) => {
+      inputs[ins.id] = '';
+    });
+    if (t.insumos && Array.isArray(t.insumos)) {
+      t.insumos.forEach((item) => {
+        if (item.insumo_id && item.cantidad_usada > 0) {
+          inputs[item.insumo_id] = item.cantidad_usada.toString();
+        }
+      });
+    }
+    setInsumosUsados(inputs);
     setIsModalOpen(true);
   };
 
@@ -158,7 +185,9 @@ export default function ProduccionPage() {
       const marginPct = Number(targetMargin) || 35;
       const suggestedPriceKg = costoPorKg > 0 ? Math.round((costoPorKg / (1 - marginPct / 100)) / 50) * 50 : 0;
 
+      const method = editingProduccion ? 'PUT' : 'POST';
       const payload = {
+        ...(editingProduccion ? { id: editingProduccion.id } : {}),
         fecha,
         producto_id: productoId,
         bandejas_obtenidas: parseDecimal(bandejasObtenidas),
@@ -171,13 +200,14 @@ export default function ProduccionPage() {
       };
 
       const res = await fetch('/api/producciones', {
-        method: 'POST',
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
 
       if (res.ok) {
         setIsModalOpen(false);
+        setEditingProduccion(null);
         fetchData();
       }
     } catch (e) {
@@ -323,13 +353,22 @@ export default function ProduccionPage() {
                         {formatCurrency(t.costo_por_bandeja)} / band.
                       </td>
                       <td className="px-4 py-3.5 text-right">
-                        <button
-                          onClick={() => handleDelete(t.id)}
-                          className="p-1.5 text-gray-400 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Eliminar"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => openEditModal(t)}
+                            className="p-1.5 text-gray-400 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors"
+                            title="Editar"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(t.id)}
+                            className="p-1.5 text-gray-400 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Eliminar"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -341,7 +380,14 @@ export default function ProduccionPage() {
       </div>
 
       {/* Modal Form Wizard for Production Tanda */}
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Cargar Tanda de Producción">
+      <Modal
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditingProduccion(null);
+        }}
+        title={editingProduccion ? `Editar Tanda #${editingProduccion.numero_produccion}` : 'Cargar Tanda de Producción'}
+      >
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -519,7 +565,10 @@ export default function ProduccionPage() {
           <div className="flex items-center justify-end gap-2 pt-3">
             <button
               type="button"
-              onClick={() => setIsModalOpen(false)}
+              onClick={() => {
+                setIsModalOpen(false);
+                setEditingProduccion(null);
+              }}
               className="px-4 py-2 text-xs font-bold text-gray-600 hover:bg-gray-100 rounded-xl"
             >
               Cancelar
@@ -529,7 +578,7 @@ export default function ProduccionPage() {
               disabled={saving}
               className="px-5 py-2.5 bg-[#aa1919] hover:bg-[#881313] text-white text-xs font-bold rounded-xl shadow-md transition-all active:scale-95 disabled:opacity-50"
             >
-              {saving ? 'Guardando...' : 'Guardar Tanda'}
+              {saving ? 'Guardando...' : editingProduccion ? 'Guardar Cambios' : 'Guardar Tanda'}
             </button>
           </div>
         </form>

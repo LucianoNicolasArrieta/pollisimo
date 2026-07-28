@@ -18,10 +18,22 @@ export async function GET() {
        ORDER BY pr.numero_produccion DESC, pr.fecha DESC`
     );
 
+    const allInsumosUsados = await query<any[]>(
+      `SELECT produccion_id, insumo_id, cantidad_usada, costo_unitario_historico FROM produccion_insumos`
+    );
+
     const tandasFormatted: Produccion[] = tandas.map((t) => {
       const costoTotal = Number(t.costo_total_insumos) || 0;
       const kilos = Number(t.kilos_totales) || 0;
       const bandejas = Number(t.bandejas_obtenidas) || 0;
+      const insumosTanda = allInsumosUsados
+        .filter((pi) => pi.produccion_id === t.id)
+        .map((pi) => ({
+          insumo_id: pi.insumo_id,
+          cantidad_usada: Number(pi.cantidad_usada) || 0,
+          costo_unitario_historico: Number(pi.costo_unitario_historico) || 0,
+        }));
+
       return {
         ...t,
         bandejas_obtenidas: bandejas,
@@ -30,6 +42,7 @@ export async function GET() {
         costo_total_insumos: costoTotal,
         costo_por_kg: kilos > 0 ? Math.round((costoTotal / kilos) * 100) / 100 : 0,
         costo_por_bandeja: bandejas > 0 ? Math.round((costoTotal / bandejas) * 100) / 100 : 0,
+        insumos: insumosTanda,
       };
     });
 
@@ -115,6 +128,74 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ success: true, id: produccion_id });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+export async function PUT(req: Request) {
+  try {
+    const body = await req.json();
+    const {
+      id,
+      fecha = getTodayLocalDateString(),
+      producto_id,
+      bandejas_obtenidas,
+      kilos_totales,
+      afecta_stock = true,
+      notas = '',
+      insumos_usados = [], // Array de { insumo_id, cantidad_usada }
+      nuevo_precio_venta_sugerido = null,
+      costo_estimado_por_kg = null,
+    } = body;
+
+    if (!id) {
+      return NextResponse.json({ error: 'ID es requerido' }, { status: 400 });
+    }
+
+    if (!producto_id || !bandejas_obtenidas || !kilos_totales) {
+      return NextResponse.json(
+        { error: 'Producto, bandejas obtenidas y kilos totales son requeridos' },
+        { status: 400 }
+      );
+    }
+
+    await query(
+      'UPDATE producciones SET fecha = ?, producto_id = ?, bandejas_obtenidas = ?, kilos_totales = ?, afecta_stock = ?, notas = ? WHERE id = ?',
+      [fecha, producto_id, bandejas_obtenidas, kilos_totales, afecta_stock ? 1 : 0, notas, id]
+    );
+
+    // Reemplazar insumos de produccion
+    await query('DELETE FROM produccion_insumos WHERE produccion_id = ?', [id]);
+
+    for (const item of insumos_usados) {
+      if (item.insumo_id && Number(item.cantidad_usada) > 0) {
+        const insumoRows = await query<any[]>('SELECT costo_unitario FROM insumos WHERE id = ?', [item.insumo_id]);
+        const costoUnitario = insumoRows.length > 0 ? Number(insumoRows[0].costo_unitario) : 0;
+
+        await query(
+          'INSERT INTO produccion_insumos (id, produccion_id, insumo_id, cantidad_usada, costo_unitario_historico) VALUES (?, ?, ?, ?, ?)',
+          [randomUUID(), id, item.insumo_id, item.cantidad_usada, costoUnitario]
+        );
+      }
+    }
+
+    if (nuevo_precio_venta_sugerido && Number(nuevo_precio_venta_sugerido) > 0) {
+      if (costo_estimado_por_kg !== null && Number(costo_estimado_por_kg) > 0) {
+        await query('UPDATE productos SET precio_venta_por_kg = ?, costo_estimado_por_kg = ? WHERE id = ?', [
+          Number(nuevo_precio_venta_sugerido),
+          Number(costo_estimado_por_kg),
+          producto_id,
+        ]);
+      } else {
+        await query('UPDATE productos SET precio_venta_por_kg = ? WHERE id = ?', [
+          Number(nuevo_precio_venta_sugerido),
+          producto_id,
+        ]);
+      }
+    }
+
+    return NextResponse.json({ success: true, id });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
